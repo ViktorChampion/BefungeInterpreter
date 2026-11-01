@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Befunge Visualizer ⚡</title>
+<style>
+:root{
+  --bg-color:#1e1e2e; --panel-bg:#252538; --text-color:#cdd6f4;
+  --accent-color:#89b4fa; --active-color:#f38ba8; --border-color:#45475a;
+  --highlight-color:#f9e2af; --success-color:#a6e3a1;
+}
+*{box-sizing:border-box;}
+body{
+  font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+  background:var(--bg-color); color:var(--text-color);
+  margin:0; padding:20px; display:flex; flex-direction:column; align-items:center;
+}
+.container{
+  width:100%; max-width:1500px; background:var(--panel-bg);
+  padding:20px; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.3);
+}
+header{
+  display:flex; justify-content:space-between; align-items:center;
+  border-bottom:2px solid var(--border-color); padding-bottom:10px;
+  margin-bottom:20px; flex-wrap:wrap; gap:10px;
+}
+h1{margin:0; font-size:24px; color:var(--accent-color);}
+button.lang-btn{
+  background:var(--border-color); color:var(--text-color); border:none;
+  padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold;
+}
+.btn{
+  padding:10px 16px; border:none; border-radius:6px; cursor:pointer;
+  font-weight:bold; transition:background .2s;
+}
+.btn-run{background:#a6e3a1; color:#11111b;}
+.btn-stop{background:#f38ba8; color:#11111b;}
+.btn-step{background:#89b4fa; color:#11111b;}
+.btn-wait{background:#f9e2af; color:#11111b;}
+.btn-ascii{background:#cba6f7; color:#11111b;}
+.btn-share{background:#cba6f7; color:#11111b;}
+.btn:disabled{background:#585b70; color:#a6adc8; cursor:not-allowed;}
+
+.workspace{display:grid; grid-template-columns:1fr; gap:15px; margin-bottom:20px;}
+.code-container{
+  position:relative; background:#181825; border-radius:8px;
+  border:1px solid var(--border-color); overflow:hidden;
+}
+.code-wrapper{position:relative;}
+textarea#code{
+  width:100%; height:220px; background:transparent; color:var(--text-color);
+  border:none; padding:10px; font-family:'Courier New',monospace;
+  font-size:15px; line-height:1.4; resize:vertical; outline:none;
+  position:relative; z-index:1; tab-size:4; white-space:pre;
+}
+.code-highlight{
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  pointer-events:none; z-index:0; padding:10px;
+  font-family:'Courier New',monospace; font-size:15px; line-height:1.4;
+  white-space:pre; overflow:hidden; color:transparent; tab-size:4;
+}
+.code-highlight .highlight-char{
+  background:rgba(249,226,175,.35); border-radius:3px;
+  box-shadow:0 0 8px rgba(249,226,175,.3);
+}
+
+.controls{
+  display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; align-items:center;
+}
+.speed-control{
+  display:flex; align-items:center; gap:10px; background:#181825;
+  padding:5px 15px; border-radius:6px; border:1px solid var(--border-color);
+}
+.speed-control input[type=range]{width:150px; accent-color:var(--accent-color);}
+.speed-control .speed-label{font-size:13px; min-width:40px;}
+select.mode-select{
+  background:var(--border-color); color:var(--text-color); border:none;
+  padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer; outline:none;
+}
+
+.stats{
+  display:flex; gap:20px; font-size:13px; color:#6c7086; padding:5px 10px;
+  background:#181825; border-radius:6px; border:1px solid var(--border-color);
+  flex-wrap:wrap; margin-bottom:20px;
+}
+.stats span{display:flex; align-items:center; gap:5px;}
+.stats .num{color:var(--text-color); font-weight:bold; font-family:monospace;}
+.stats .badge{padding:2px 8px; border-radius:4px; font-size:11px; font-weight:bold;}
+.badge-std{background:rgba(137,180,250,.15); color:var(--accent-color); border:1px solid rgba(137,180,250,.2);}
+.badge-custom{background:rgba(203,166,247,.2); color:#cba6f7; border:1px solid rgba(203,166,247,.3);}
+.badge-worker{background:rgba(166,227,161,.2); color:var(--success-color); border:1px solid rgba(166,227,161,.3);}
+.badge-warn{background:rgba(243,139,168,.2); color:#f38ba8; border:1px solid rgba(243,139,168,.3);}
+
+.playfield-panel{
+  background:#181825; border:1px solid var(--border-color); border-radius:8px;
+  margin-bottom:20px; padding:10px; overflow:auto;
+}
+.playfield-title{font-size:13px; color:#6c7086; margin-bottom:6px; display:flex; justify-content:space-between;}
+.playfield{
+  display:grid; grid-template-columns:repeat(80,18px); gap:1px;
+  font-family:'Courier New',monospace; width:max-content;
+}
+.pf-cell{
+  width:18px; height:20px; display:flex; justify-content:center; align-items:center;
+  background:var(--panel-bg); border:1px solid rgba(69,71,90,.4);
+  font-size:12px; color:#a6adc8; position:relative; user-select:none;
+}
+.pf-cell.pc{
+  background:rgba(243,139,168,.35); color:#fff;
+  box-shadow:0 0 6px rgba(243,139,168,.6); z-index:2; border-color:var(--active-color);
+}
+.pf-cell.pc::after{
+  content:'▲'; position:absolute; top:-14px; left:50%; transform:translateX(-50%);
+  color:var(--active-color); font-size:11px;
+}
+.pf-cell.arrow-r::before{content:'→'; position:absolute; top:-13px; color:#f9e2af;}
+.pf-cell.arrow-l::before{content:'←'; position:absolute; top:-13px; color:#f9e2af;}
+.pf-cell.arrow-u::before{content:'↑'; position:absolute; top:-13px; color:#f9e2af;}
+.pf-cell.arrow-d::before{content:'↓'; position:absolute; top:-13px; color:#f9e2af;}
+
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:15px; margin-bottom:20px;}
+@media(max-width:900px){.two-col{grid-template-columns:1fr;}}
+.stack-panel, .io-field{display:flex; flex-direction:column;}
+.stack-panel label, .io-field label{margin-bottom:8px; font-weight:bold; font-size:14px;}
+#stack{
+  background:#181825; border:1px solid var(--border-color); border-radius:6px;
+  padding:10px; height:150px; overflow:auto; display:flex; flex-wrap:wrap; gap:5px;
+  align-content:flex-start;
+}
+.stack-item{
+  background:var(--panel-bg); border:1px solid var(--border-color); border-radius:4px;
+  padding:3px 8px; font-family:monospace; font-size:13px;
+  display:flex; flex-direction:column; align-items:center; min-width:36px;
+}
+.stack-item .sv{font-weight:bold; color:var(--success-color);}
+.stack-item .sa{font-size:10px; color:var(--accent-color);}
+.stack-item.top{border-color:var(--active-color); box-shadow:0 0 6px rgba(243,139,168,.4);}
+.stack-empty{color:#6c7086; font-style:italic; font-size:13px;}
+
+.io-field textarea{
+  width:100%; height:150px; background:#181825; border:1px solid var(--border-color);
+  border-radius:6px; color:var(--text-color); padding:10px; font-family:monospace;
+  font-size:14px; resize:vertical; outline:none;
+}
+.io-field textarea:focus{border-color:var(--accent-color);}
+
+.output-history-panel{
+  background:#181825; border:1px solid var(--border-color); border-radius:8px;
+  margin-bottom:20px; padding:12px 15px; max-height:280px; display:flex; flex-direction:column;
+}
+.output-history-header{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-shrink:0;}
+.output-history-header h3{margin:0; color:var(--accent-color); font-size:16px;}
+.output-history-list{overflow-y:auto; font-family:'Courier New',monospace; font-size:13px; flex-grow:1;}
+.output-history-empty{color:#6c7086; font-style:italic; font-size:13px; padding:8px;}
+.output-history-row{
+  display:grid; grid-template-columns:50px 90px 70px 70px 1fr; gap:8px;
+  padding:4px 8px; border-bottom:1px solid rgba(69,71,90,.3); align-items:center;
+}
+.output-history-row:hover{background:rgba(137,180,250,.08);}
+.output-history-row.header{
+  color:#6c7086; font-weight:bold; border-bottom:2px solid var(--border-color);
+  position:sticky; top:0; background:#181825; z-index:1;
+}
+.output-history-row .num-cell{color:var(--text-color);}
+.output-history-row .coord-cell{color:#6c7086; font-size:12px;}
+.output-history-row .char-cell{color:var(--active-color); font-weight:bold; font-size:15px;}
+.output-history-row .char-cell.control-char{color:#f9e2af; font-size:11px; padding:0 6px; border-radius:3px; background:rgba(249,226,175,.1);}
+.output-history-row .char-cell.custom-char{color:#89dceb; background:rgba(137,220,235,.12); padding:0 6px; border-radius:3px; font-weight:bold;}
+.output-history-row .char-cell.non-printable{color:#cba6f7; font-size:11px;}
+.output-history-row .ptr-cell{color:var(--highlight-color);}
+.output-history-row .val-cell{color:var(--success-color); font-weight:bold;}
+
+.hints{background:#181825; padding:15px; border-radius:8px; border:1px solid var(--border-color); margin-top:20px;}
+.hints h3{margin-top:0; color:var(--accent-color);}
+.hint-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px; font-size:14px;}
+.hint-item code{
+  background:var(--border-color); padding:2px 6px; border-radius:4px;
+  color:var(--active-color); font-weight:bold; font-family:monospace;
+}
+.hint-item{display:flex; gap:8px; align-items:baseline;}
+
+.current-command-info{
+  display:flex; align-items:center; gap:10px; background:#181825; padding:5px 12px;
+  border-radius:6px; border:1px solid var(--border-color); font-size:14px;
+  font-family:'Courier New',monospace; margin-bottom:20px;
+}
+.current-command-info .cmd-char{
+  color:var(--active-color); font-weight:bold; font-size:18px;
+  background:rgba(243,139,168,.15); padding:2px 8px; border-radius:4px;
+}
+.current-command-info .cmd-index{color:#6c7086; font-size:12px;}
+.execution-status{display:none; color:var(--accent-color); font-size:14px; font-weight:bold;}
+.execution-status.active{display:inline;}
+
+.ascii-section{
+  margin-top:20px; max-width:900px; width:100%;
+  background:var(--panel-bg); padding:20px; border-radius:12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.3);
+}
+.ascii-section h3{color:var(--accent-color); margin-top:0;}
+.ascii-group{background:var(--panel-bg); border:1px solid var(--border-color); border-radius:6px; margin-bottom:8px; overflow:hidden;}
+.ascii-group-header{
+  background:#2a2a3f; padding:10px 15px; cursor:pointer; font-weight:bold;
+  display:flex; justify-content:space-between; align-items:center; user-select:none;
+}
+.ascii-group-header:hover{background:#313149;}
+.ascii-group-content{
+  display:none; grid-template-columns:repeat(auto-fill,minmax(80px,1fr));
+  gap:6px; padding:12px; background:#14141f; border-top:1px solid var(--border-color);
+}
+.ascii-group.open .ascii-group-content{display:grid;}
+.ascii-item{
+  background:var(--panel-bg); border:1px solid var(--border-color);
+  border-radius:4px; padding:6px; text-align:center; font-size:13px;
+}
+.ascii-item.custom{border-color:#cba6f7; background:rgba(203,166,247,.08);}
+.ascii-item.control{border-color:#f9e2af; background:rgba(249,226,175,.08);}
+.ascii-code{color:#6c7086; font-size:11px; display:block;}
+.ascii-char{font-weight:bold; color:var(--active-color); font-family:monospace; font-size:15px;}
+
+.ascii-editor-overlay{
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+  z-index:1000; justify-content:center; align-items:center; padding:20px;
+}
+.ascii-editor-overlay.open{display:flex;}
+.ascii-editor{
+  background:var(--panel-bg); border:2px solid var(--border-color); border-radius:12px;
+  padding:30px; max-width:700px; width:100%; max-height:90vh; overflow-y:auto;
+  box-shadow:0 12px 48px rgba(0,0,0,.5);
+}
+.ascii-editor h2{margin-top:0; color:var(--accent-color);}
+.ascii-editor .editor-hint{color:#6c7086; font-size:13px; margin-bottom:15px;}
+.ascii-editor .editor-input{
+  width:100%; height:300px; background:#181825; color:var(--text-color);
+  border:1px solid var(--border-color); border-radius:6px; padding:12px;
+  font-family:'Courier New',monospace; font-size:14px; resize:vertical;
+  outline:none; line-height:1.6;
+}
+.ascii-editor .editor-input:focus{border-color:var(--accent-color);}
+.ascii-editor .editor-actions{display:flex; gap:12px; margin-top:15px; flex-wrap:wrap;}
+.btn-close-editor{background:var(--border-color); color:var(--text-color);}
+.btn-save-editor{background:#a6e3a1; color:#11111b;}
+.btn-reset-editor{background:#f38ba8; color:#11111b;}
+.editor-presets{display:flex; gap:8px; flex-wrap:wrap; margin:10px 0;}
+.editor-presets .preset-btn{
+  padding:4px 12px; border:1px solid var(--border-color); background:var(--panel-bg);
+  color:var(--text-color); border-radius:4px; cursor:pointer; font-size:12px;
+}
+.editor-presets .preset-btn:hover{border-color:var(--accent-color); background:rgba(137,180,250,.1);}
+.editor-presets .preset-btn.control-preset{border-color:#f9e2af; color:#f9e2af;}
+
+footer{margin-top:20px; font-size:12px; color:rgba(128,128,128,.5);}
+
+/* Input modal */
+.input-modal-overlay{
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,.7);
+  z-index:1100; justify-content:center; align-items:center; padding:20px;
+}
+.input-modal-overlay.open{display:flex;}
+.input-modal{
+  background:var(--panel-bg); border:2px solid var(--accent-color);
+  border-radius:12px; padding:24px 28px; max-width:420px; width:100%;
+  box-shadow:0 12px 48px rgba(0,0,0,.6); text-align:center;
+}
+.input-modal h2{margin:0 0 8px; color:var(--accent-color); font-size:20px;}
+.input-modal p{margin:0 0 16px; color:#6c7086; font-size:13px;}
+.input-modal .input-display{
+  font-family:'Courier New',monospace; font-size:48px; font-weight:bold;
+  color:var(--active-color); background:#181825; border:1px solid var(--border-color);
+  border-radius:8px; padding:12px; min-height:80px; margin-bottom:16px;
+  display:flex; align-items:center; justify-content:center;
+}
+.input-modal .input-actions{display:flex; gap:10px; justify-content:center; flex-wrap:wrap;}
+.input-modal .hint-keys{color:#6c7086; font-size:12px; margin-top:12px;}
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1 id="title">Befunge Visualizer ⚡</h1>
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <select id="directionModeSelect" class="mode-select" onchange="updateDirectionMode()">
+        <option value="wrap" id="optWrap">Wrap-Around</option>
+        <option value="bounce" id="optBounce">Bounce</option>
+      </select>
+      <select id="exampleSelect" class="mode-select" onchange="loadExample()"></select>
+      <button class="lang-btn" id="langBtn" onclick="toggleLanguage()">RU</button>
+      <button class="btn btn-ascii" id="btnAscii" onclick="openAsciiEditor()">📝 ASCII</button>
+      <button class="btn btn-share" id="btnShare" onclick="generateShareLink()">🔗 Share</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <div class="code-container">
+      <div class="code-wrapper">
+        <textarea id="code" spellcheck="false" placeholder="Enter Befunge code here..."></textarea>
+        <div class="code-highlight" id="codeHighlight"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-run" id="btnRun" onclick="runCode()">Run</button>
+    <button class="btn btn-wait" id="btnWait" onclick="waitCode()" disabled>Wait</button>
+    <button class="btn btn-run" id="btnContinue" onclick="continueCode()" disabled>Continue</button>
+    <button class="btn btn-step" id="btnStepFwd" onclick="stepForward()">+ Step</button>
+    <button class="btn btn-step" id="btnStepBwd" onclick="stepBackward()" disabled>- Step</button>
+    <button class="btn btn-stop" id="btnStop" onclick="stopCode()">Stop</button>
+    <button class="btn" id="btnClear" onclick="clearAll()" style="background:#45475a; color:var(--text-color);">Clear</button>
+
+    <div class="speed-control">
+      <span id="labelSpeed">Speed:</span>
+      <input type="range" id="speed" min="0" max="100" value="20" oninput="updateSpeed()">
+      <span class="speed-label" id="speedVal">20</span>
+    </div>
+
+    <select id="divZeroModeSelect" class="mode-select" onchange="updateDivZeroMode()">
+      <option value="ask" id="optDivAsk">Division by 0: Ask input</option>
+      <option value="zero" id="optDivZero">Division by 0: Return 0</option>
+      <option value="value" id="optDivValue">Division by 0: Return value…</option>
+      <option value="stop" id="optDivStop">Division by 0: Stop program</option>
+    </select>
+
+    <span class="execution-status" id="execStatus">⏳ Running...</span>
+  </div>
+
+  <div class="current-command-info" id="commandInfo">
+    <span class="cmd-index" id="cmdIndex">—</span>
+    <span class="cmd-char" id="cmdChar">␣</span>
+    <span style="color:#6c7086; font-size:12px;" id="cmdDesc">waiting</span>
+    <span style="color:#6c7086; font-size:12px; margin-left:10px;" id="posInfo">x:0 y:0 dir:→</span>
+  </div>
+
+  <div class="stats">
+    <span id="statSteps">Steps: <span class="num" id="totalSteps">0</span></span>
+    <span id="statSpeed">Speed: <span class="num" id="stepsPerTick">20 cmd/s</span></span>
+    <span class="badge badge-std" id="asciiTableBadge">ASCII: Standard</span>
+    <span class="badge badge-std" id="execTimeBadge">⏱️ --</span>
+    <span class="badge badge-std" id="dirBadge">↻ Wrap-Around</span>
+  </div>
+
+  <div class="playfield-panel">
+    <div class="playfield-title">
+      <span id="pfTitle">Playfield (80×25) — click a cell to edit code</span>
+      <span id="pfPos">PC: (0,0)</span>
+    </div>
+    <div class="playfield" id="playfield"></div>
+  </div>
+
+  <div class="two-col">
+    <div class="stack-panel">
+      <label id="labelStack">Stack (top →)</label>
+      <div id="stack"></div>
+    </div>
+    <div class="io-field">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <label id="labelOutput" style="margin-bottom:0;">Output:</label>
+        <button id="btnCopy" onclick="copyOutput()" style="background:var(--border-color); color:var(--text-color); border:none; padding:4px 10px; border-radius:4px; font-size:12px; cursor:pointer; font-weight:bold;">Copy</button>
+      </div>
+      <textarea id="output" readonly></textarea>
+    </div>
+  </div>
+
+  <div class="output-history-panel">
+    <div class="output-history-header">
+      <h3 id="outputHistoryTitle">📜 Output History</h3>
+      <button class="btn" id="btnClearHistory" onclick="clearOutputHistory()" style="padding:4px 10px; font-size:12px; background:var(--border-color); color:var(--text-color);">Clear</button>
+    </div>
+    <div class="output-history-list" id="outputHistoryList">
+      <div class="output-history-empty" id="outputHistoryEmpty">No output yet. Run the program to see history.</div>
+    </div>
+  </div>
+
+  <div class="hints">
+    <h3 id="hintsTitle">Command Reference</h3>
+    <div class="hint-grid" id="hintGrid"></div>
+  </div>
+</div>
+
+<div class="ascii-section">
+  <h3 id="asciiTitle">ASCII Table (0-255)</h3>
+  <div id="asciiContainer"></div>
+</div>
+
+<!-- ASCII editor overlay -->
+<div class="ascii-editor-overlay" id="asciiEditorOverlay">
+  <div class="ascii-editor">
+    <h2 id="asciiEditorTitle">✏️ Custom ASCII Table</h2>
+    <p class="editor-hint" id="asciiEditorHint">
+      Format: <code>char = code1, code2, code3</code> (one per line)<br>
+      Use control names: <code>NUL, SOH, STX, ...</code>
+    </p>
+    <div class="editor-presets">
+      <span style="color:#6c7086;font-size:13px;">Presets:</span>
+      <button class="preset-btn" onclick="loadPreset('russian')">🇷🇺 Russian</button>
+      <button class="preset-btn" onclick="loadPreset('greek')">🇬🇷 Greek</button>
+      <button class="preset-btn" onclick="loadPreset('emoji')">😊 Emoji</button>
+      <button class="preset-btn" onclick="loadPreset('extended')">📚 Extended</button>
+      <button class="preset-btn control-preset" onclick="loadPreset('controls')">🎮 Controls</button>
+    </div>
+    <textarea class="editor-input" id="editorInput" placeholder="A = 65, 66, 67&#10;А = 1040&#10;NUL = 0"></textarea>
+    <div class="editor-actions">
+      <button class="btn btn-save-editor" id="btnApplyAscii" onclick="saveAsciiTable()">✅ Apply</button>
+      <button class="btn btn-reset-editor" id="btnResetAscii" onclick="resetAsciiTable()">↺ Reset</button>
+      <button class="btn btn-close-editor" id="btnCloseAscii" onclick="closeAsciiEditor()">✖ Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Input modal overlay -->
+<div class="input-modal-overlay" id="inputModalOverlay">
+  <div class="input-modal">
+    <h2 id="inputModalTitle">Input</h2>
+    <p id="inputModalHint">Press a key…</p>
+    <div class="input-display" id="inputDisplay">_</div>
+    <div class="input-actions">
+      <button class="btn btn-save-editor" id="inputModalOk" onclick="confirmInput()">✅ OK</button>
+      <button class="btn btn-reset-editor" id="inputModalCancel" onclick="cancelInput()">✖ Cancel</button>
+    </div>
+    <div class="hint-keys" id="inputModalKeys">Enter — confirm · Esc — cancel</div>
+  </div>
+</div>
+
+<h6 style="color: rgba(128, 128, 128, 0.5);">© 2026 viktorchampion. Code licensed under MIT License.</h6>
+
+<script>
+// =====================================================================
+// КОНСТАНТЫ
+// =====================================================================
+const W = 80, H = 25;
+const MAX_ITERATIONS = 50000000;
+const CHUNK_SIZE = 20000;
+const MAX_HISTORY = 20000;
+
+// =====================================================================
+// УПРАВЛЯЮЩИЕ СИМВОЛЫ
+// =====================================================================
+function getControlBehavior(name){
+  const b={'LF':'\n','CR':'\r','TAB':'\t','BS':'\b','FF':'\f','VT':'\v','NUL':'\x00','BEL':'\x07',
+    'SO':'\x0E','SI':'\x0F','DLE':'\x10','DC1':'\x11','DC2':'\x12','DC3':'\x13','DC4':'\x14',
+    'NAK':'\x15','SYN':'\x16','ETB':'\x17','CAN':'\x18','EM':'\x19','SUB':'\x1A','ESC':'\x1B',
+    'FS':'\x1C','GS':'\x1D','RS':'\x1E','US':'\x1F','SP':' ','DEL':'\x7F'};
+  return b[name]!==undefined?b[name]:null;
+}
+const CONTROL_NAMES={'NUL':0,'SOH':1,'STX':2,'ETX':3,'EOT':4,'ENQ':5,'ACK':6,'BEL':7,'BS':8,'TAB':9,
+  'LF':10,'VT':11,'FF':12,'CR':13,'SO':14,'SI':15,'DLE':16,'DC1':17,'DC2':18,'DC3':19,'DC4':20,
+  'NAK':21,'SYN':22,'ETB':23,'CAN':24,'EM':25,'SUB':26,'ESC':27,'FS':28,'GS':29,'RS':30,'US':31,
+  'DEL':127,'SP':32};
+const CONTROL_REVERSE={}; for(const[n,c] of Object.entries(CONTROL_NAMES)) CONTROL_REVERSE[c]=n;
+const CONTROL_CODES=new Set(Object.values(CONTROL_NAMES));
+
+// =====================================================================
+// ASCII ТАБЛИЦА
+// =====================================================================
+let customAsciiMap=null, customAsciiReverse=null, customAsciiRawText=null;
+function getStandardAsciiMap(){const m={};for(let i=0;i<256;i++)m[String.fromCharCode(i)]=[i];
+  for(const[n,c]of Object.entries(CONTROL_NAMES))if(c<256)m[n]=[c];return m;}
+function getStandardAsciiReverse(){const r={};for(let i=0;i<256;i++)r[i]=String.fromCharCode(i);return r;}
+function getCurrentAsciiMap(){return customAsciiMap!==null?customAsciiMap:getStandardAsciiMap();}
+function getCurrentAsciiReverse(){return customAsciiReverse!==null?customAsciiReverse:getStandardAsciiReverse();}
+function charToCode(ch){
+  if(CONTROL_NAMES[ch]!==undefined)return CONTROL_NAMES[ch];
+  const m=getCurrentAsciiMap();
+  if(m[ch]&&m[ch].length>0)return m[ch][0];
+  const cp=ch.codePointAt(0); return cp!==undefined?cp:0;
+}
+function codeToDisplayChar(code){
+  if(customAsciiReverse!==null&&customAsciiReverse[code]!==undefined)return customAsciiReverse[code];
+  if(CONTROL_REVERSE[code]!==undefined)return CONTROL_REVERSE[code];
+  if(code>=32&&code<=0x10FFFF&&!CONTROL_CODES.has(code)){
+    try{const ch=String.fromCodePoint(code);if(ch)return ch;}catch(e){}
+  }
+  return null;
+}
+function codeToCharForOutput(code){
+  if(customAsciiReverse!==null&&customAsciiReverse[code]!==undefined){
+    const n=customAsciiReverse[code]; const b=getControlBehavior(n);
+    return b!==null?b:n;
+  }
+  if(CONTROL_REVERSE[code]!==undefined){
+    const b=getControlBehavior(CONTROL_REVERSE[code]); return b!==null?b:'';
+  }
+  if(code>=0&&code<=0x10FFFF){
+    try{const ch=String.fromCodePoint(code);
+      if(ch&&!CONTROL_CODES.has(code)&&code>=32)return ch;}catch(e){}
+  }
+  return null;
+}
+function buildReverseMap(map){const r={};for(const[ch,codes]of Object.entries(map))
+  for(const c of codes)if(r[c]===undefined)r[c]=ch;return r;}
+function parseAsciiTable(text){
+  const map={};let hasError=false;
+  for(const line of text.split('\n')){
+    const t=line.trim(); if(!t||t.startsWith('#'))continue;
+    const sep=t.includes('=')?'=':':'; const parts=t.split(sep);
+    if(parts.length!==2)continue;
+    let charPart=parts[0].trim(), codePart=parts[1].trim(), char=null;
+    if(CONTROL_NAMES[charPart]!==undefined)char=charPart;
+    else if((charPart.startsWith('"')&&charPart.endsWith('"'))||(charPart.startsWith("'")&&charPart.endsWith("'")))
+      char=charPart.slice(1,-1);
+    else if(charPart.length===1)char=charPart;
+    else{const u=charPart.toUpperCase();char=CONTROL_NAMES[u]!==undefined?u:charPart[0];}
+    if(!char)continue;
+    const codes=[];
+    for(const cs of codePart.split(',').map(s=>s.trim())){
+      const n=parseInt(cs);
+      if(!isNaN(n)&&n>=0&&n<=0x10FFFF)codes.push(n); else hasError=true;
+    }
+    if(codes.length>0)map[char]=codes;
+  }
+  return {map,hasError};
+}
+function openAsciiEditor(){
+  const ov=document.getElementById('asciiEditorOverlay'), inp=document.getElementById('editorInput');
+  if(customAsciiRawText!==null)inp.value=customAsciiRawText;
+  else inp.value='# Format: char = code1, code2\nA = 65\nNUL = 0\n';
+  ov.classList.add('open');
+}
+function closeAsciiEditor(){document.getElementById('asciiEditorOverlay').classList.remove('open');}
+function saveAsciiTable(){
+  const text=document.getElementById('editorInput').value;
+  const res=parseAsciiTable(text);
+  if(Object.keys(res.map).length===0){alert('No valid mappings found.');return;}
+  if(res.hasError&&!confirm('Some codes invalid. Continue?'))return;
+  customAsciiMap=res.map; customAsciiReverse=buildReverseMap(res.map); customAsciiRawText=text;
+  updateAsciiBadge(); updateAsciiTableDisplay(); updateUI(); closeAsciiEditor();
+}
+function resetAsciiTable(){
+  if(confirm('Reset to standard ASCII table?')){
+    customAsciiMap=null;customAsciiReverse=null;customAsciiRawText=null;
+    updateAsciiBadge(); updateAsciiTableDisplay(); updateUI(); closeAsciiEditor();
+  }
+}
+function updateAsciiBadge(){
+  const b=document.getElementById('asciiTableBadge');
+  if(customAsciiMap!==null){
+    const cnt=Object.values(customAsciiMap).reduce((s,a)=>s+a.length,0);
+    b.textContent=currentLang==='ru'?'ASCII: Своя ('+cnt+')':'ASCII: Custom ('+cnt+')';
+    b.className='badge badge-custom';
+  } else {
+    b.textContent=currentLang==='ru'?'ASCII: Стандартная':'ASCII: Standard';
+    b.className='badge badge-std';
+  }
+}
+function loadPreset(name){
+  const presets={
+    controls:{'NUL':[0],'SOH':[1],'STX':[2],'ETX':[3],'EOT':[4],'ENQ':[5],'ACK':[6],'BEL':[7],'BS':[8],'TAB':[9],'LF':[10],'VT':[11],'FF':[12],'CR':[13],'SO':[14],'SI':[15],'DLE':[16],'DC1':[17],'DC2':[18],'DC3':[19],'DC4':[20],'NAK':[21],'SYN':[22],'ETB':[23],'CAN':[24],'EM':[25],'SUB':[26],'ESC':[27],'FS':[28],'GS':[29],'RS':[30],'US':[31],'SP':[32],'DEL':[127]},
+    russian:{'А':[1040],'Б':[1041],'В':[1042],'Г':[1043],'Д':[1044],'Е':[1045],'Ё':[1025],'Ж':[1046],'З':[1047],'И':[1048],'Й':[1049],'К':[1050],'Л':[1051],'М':[1052],'Н':[1053],'О':[1054],'П':[1055],'Р':[1056],'С':[1057],'Т':[1058],'У':[1059],'Ф':[1060],'Х':[1061],'Ц':[1062],'Ч':[1063],'Ш':[1064],'Щ':[1065],'Ъ':[1066],'Ы':[1067],'Ь':[1068],'Э':[1069],'Ю':[1070],'Я':[1071],'а':[1072],'б':[1073],'в':[1074],'г':[1075],'д':[1076],'е':[1077],'ё':[1105],'ж':[1078],'з':[1079],'и':[1080],'й':[1081],'к':[1082],'л':[1083],'м':[1084],'н':[1085],'о':[1086],'п':[1087],'р':[1088],'с':[1089],'т':[1090],'у':[1091],'ф':[1092],'х':[1093],'ц':[1094],'ч':[1095],'ш':[1096],'щ':[1097],'ъ':[1098],'ы':[1099],'ь':[1100],'э':[1101],'ю':[1102],'я':[1103]},
+    greek:{'Α':[913],'Β':[914],'Γ':[915],'Δ':[916],'Ε':[917],'Ζ':[918],'Η':[919],'Θ':[920],'Ι':[921],'Κ':[922],'Λ':[923],'Μ':[924],'Ν':[925],'Ξ':[926],'Ο':[927],'Π':[928],'Ρ':[929],'Σ':[931],'Τ':[932],'Υ':[933],'Φ':[934],'Χ':[935],'Ψ':[936],'Ω':[937],'α':[945],'β':[946],'γ':[947],'δ':[948],'ε':[949],'ζ':[950],'η':[951],'θ':[952],'ι':[953],'κ':[954],'λ':[955],'μ':[956],'ν':[957],'ξ':[958],'ο':[959],'π':[960],'ρ':[961],'σ':[963],'τ':[964],'υ':[965],'φ':[966],'χ':[967],'ψ':[968],'ω':[969]},
+    emoji:{'😊':[128522],'😂':[128514],'❤️':[10084],'🔥':[128293],'👍':[128077],'🎉':[127881],'⭐':[11088]},
+    extended:{'€':[128],'‚':[130],'ƒ':[131],'„':[132],'…':[133],'†':[134],'‡':[135],'ˆ':[136],'‰':[137],'Š':[138],'‹':[139],'Œ':[140],'Ž':[142],'‘':[145],'’':[146],'“':[147],'”':[148],'•':[149],'–':[150],'—':[151],'˜':[152],'™':[153],'š':[154],'›':[155],'œ':[156],'ž':[158],'Ÿ':[159],'¡':[161],'¢':[162],'£':[163],'¤':[164],'¥':[165],'¦':[166],'§':[167],'¨':[168],'©':[169],'ª':[170],'«':[171],'¬':[172],'®':[174],'¯':[175],'°':[176],'±':[177],'²':[178],'³':[179],'´':[180],'µ':[181],'¶':[182],'·':[183],'¸':[184],'¹':[185],'º':[186],'»':[187],'¼':[188],'½':[189],'¾':[190],'¿':[191]}
+  };
+  const p=presets[name]; if(!p)return;
+  document.getElementById('editorInput').value=Object.entries(p).map(([c,cs])=>c+' = '+cs.join(', ')).join('\n');
+}
+function updateAsciiTableDisplay(){
+  const container=document.getElementById('asciiContainer'); if(!container)return;
+  const openGroups=Array.from(container.querySelectorAll('.ascii-group.open')).map(g=>g.dataset.id);
+  container.innerHTML='';
+  const groups=[
+    {id:'control',min:0,max:31,ru:'0-31: Управляющие',en:'0-31: Control'},
+    {id:'space',min:32,max:32,ru:'32: Пробел',en:'32: Space'},
+    {id:'punct1',min:33,max:47,ru:'33-47: Пунктуация',en:'33-47: Punctuation'},
+    {id:'digits',min:48,max:57,ru:'48-57: Цифры',en:'48-57: Digits'},
+    {id:'punct2',min:58,max:64,ru:'58-64: Пунктуация',en:'58-64: Punctuation'},
+    {id:'upper',min:65,max:90,ru:'65-90: Заглавные',en:'65-90: Uppercase'},
+    {id:'punct3',min:91,max:96,ru:'91-96: Пунктуация',en:'91-96: Punctuation'},
+    {id:'lower',min:97,max:122,ru:'97-122: Строчные',en:'97-122: Lowercase'},
+    {id:'punct4',min:123,max:126,ru:'123-126: Пунктуация',en:'123-126: Punctuation'},
+    {id:'del',min:127,max:127,ru:'127: DEL',en:'127: DEL'},
+    {id:'latin1',min:128,max:255,ru:'128-255: Latin-1/Extended',en:'128-255: Latin-1/Extended'}
+  ];
+  const isCustom=customAsciiMap!==null;
+  for(const g of groups){
+    const el=document.createElement('div'); el.className='ascii-group'; el.dataset.id=g.id;
+    if(openGroups.includes(g.id))el.classList.add('open');
+    const hdr=document.createElement('div'); hdr.className='ascii-group-header';
+    hdr.innerHTML='<span>'+(currentLang==='ru'?g.ru:g.en)+'</span><span>▾</span>';
+    hdr.onclick=()=>el.classList.toggle('open');
+    const content=document.createElement('div'); content.className='ascii-group-content';
+    for(let i=g.min;i<=g.max;i++){
+      let charText,isCustomChar=false,isControl=false;
+      if(isCustom&&customAsciiReverse&&customAsciiReverse[i]!==undefined){charText=customAsciiReverse[i];isCustomChar=true;}
+      else if(CONTROL_REVERSE[i]!==undefined){charText=CONTROL_REVERSE[i];isControl=true;}
+      else if(i>=0&&i<=31){charText='^'+String.fromCharCode(64+i);isControl=true;}
+      else if(i===127){charText='DEL';isControl=true;}
+      else if(i>=32&&i<=0x10FFFF){try{charText=String.fromCharCode(i);}catch(e){charText='?';}}
+      else charText='?';
+      const item=document.createElement('div'); item.className='ascii-item';
+      if(isCustomChar)item.classList.add('custom'); if(isControl)item.classList.add('control');
+      item.innerHTML='<span class="ascii-code">#'+i+'</span><span class="ascii-char">'+charText+'</span>';
+      content.appendChild(item);
+    }
+    el.appendChild(hdr); el.appendChild(content); container.appendChild(el);
+  }
+}
+
+// =====================================================================
+// ПЕРЕВОДЫ
+// =====================================================================
+let currentLang='en';
+const translations={
+  en:{
+    title:"Befunge Visualizer ⚡",
+    hintsTitle:"Command Reference",
+    labelOutput:"Output:", placeholder:"Enter Befunge code here...",
+    btnRun:"Run",btnWait:"Wait",btnContinue:"Continue",btnStepFwd:"+ Step",btnStepBwd:"- Step",
+    btnStop:"Stop",btnClear:"Clear",btnCopy:"Copy",btnCopied:"Copied!",
+    examplePlaceholder:"— Choose Example —",
+    execStatus:"⏳ Running...", cmdWaiting:"waiting",
+    labelStack:"Stack (top →)", labelSpeed:"Speed:",
+    outputHistoryTitle:"📜 Output History",
+    outputHistoryEmpty:"No output yet. Run the program to see history.",
+    statSteps:"Steps:", statSpeed:"Speed:",
+    btnAscii:"📝 ASCII",
+    asciiTitle:"ASCII Table (0-255)",
+    asciiEditorTitle:"✏️ Custom ASCII Table",
+    asciiEditorHint:'Format: <code>char = code1, code2, code3</code> (one per line)<br>Use control names: <code>NUL, SOH, STX, ...</code>',
+    btnApplyAscii:"✅ Apply",btnResetAscii:"↺ Reset",btnCloseAscii:"✖ Close",
+    optWrap:"Wrap-Around",optBounce:"Bounce",
+    pfTitle:"Playfield (80×25) — click a cell to edit code",
+    inputTitle:"Input",
+    inputHintChar:"Enter one character (for ~)",
+    inputHintInt:"Enter one digit (for &)",
+    inputOk:"✅ OK", inputCancel:"✖ Cancel",
+    inputKeys:"Enter — confirm · Esc — cancel · max 1 char",
+    inputDisplayEmpty:"_",
+    examples:{
+      hello:"Hello World!", hello2:"Hello World! (simpler)",
+      quine:"Befunge Quine", count:"Count 1..9",
+      cat:"Cat program (& echo)", factorial:"Factorial (6!)",
+      reverse:"Reverse input string"
+    },
+    hints:[
+      {cmd:'0-9',desc:'Push number onto stack'},
+      {cmd:'+',desc:'Add: pop a,b → push b+a'},
+      {cmd:'-',desc:'Subtract: pop a,b → push b-a'},
+      {cmd:'*',desc:'Multiply: pop a,b → push b*a'},
+      {cmd:'/',desc:'Divide: pop a,b → push b/a (int)'},
+      {cmd:'%',desc:'Modulo: pop a,b → push b%a'},
+      {cmd:'!',desc:'Logical NOT: 0→1, else 0'},
+      {cmd:'`',desc:'Greater than: a>b → 1 else 0'},
+      {cmd:'> < ^ v',desc:'Change direction: right, left, up, down'},
+      {cmd:'?',desc:'Random direction'},
+      {cmd:'_',desc:'Horizontal if: pop, right if 0 else left'},
+      {cmd:'|',desc:'Vertical if: pop, down if 0 else up'},
+      {cmd:'"',desc:'String mode: push ASCII codes until next "'},
+      {cmd:':',desc:'Duplicate top of stack'},
+      {cmd:'\\',desc:'Swap top two stack values'},
+      {cmd:'$',desc:'Discard top of stack'},
+      {cmd:'.',desc:'Pop and output as integer'},
+      {cmd:',',desc:'Pop and output as ASCII char'},
+      {cmd:'#',desc:'Bridge: skip next cell'},
+      {cmd:'g',desc:'Get: pop y,x → push playfield[y][x]'},
+      {cmd:'p',desc:'Put: pop y,x,v → playfield[y][x]=v'},
+      {cmd:'&',desc:'Input one digit, push onto stack'},
+      {cmd:'~',desc:'Input one char, push ASCII onto stack'},
+      {cmd:'@',desc:'End program'}
+    ]
+  },
+  ru:{
+    title:"Визуализатор Befunge ⚡",
+    hintsTitle:"Справка по командам",
+    labelOutput:"Вывод:", placeholder:"Введите Befunge код сюда...",
+    btnRun:"Запуск",btnWait:"Пауза",btnContinue:"Продолжить",btnStepFwd:"Шаг +",btnStepBwd:"Шаг -",
+    btnStop:"Стоп",btnClear:"Стереть",btnCopy:"Копировать",btnCopied:"Скопировано!",
+    examplePlaceholder:"— Выберите пример —",
+    execStatus:"⏳ Выполнение...", cmdWaiting:"ожидание",
+    labelStack:"Стек (вершина →)", labelSpeed:"Скорость:",
+    outputHistoryTitle:"📜 История вывода",
+    outputHistoryEmpty:"Пока нет вывода. Запустите программу.",
+    statSteps:"Шагов:", statSpeed:"Скорость:",
+    btnAscii:"📝 ASCII",
+    asciiTitle:"Таблица ASCII (0-255)",
+    asciiEditorTitle:"✏️ Своя таблица ASCII",
+    asciiEditorHint:'Формат: <code>символ = код1, код2, код3</code> (по одному на строку)<br>Имена управляющих: <code>NUL, SOH, STX, ...</code>',
+    btnApplyAscii:"✅ Применить",btnResetAscii:"↺ Сбросить",btnCloseAscii:"✖ Закрыть",
+    optWrap:"Закольцованный",optBounce:"Отражение",
+    pfTitle:"Игровое поле (80×25) — клик по клетке = редактировать код",
+    inputTitle:"Ввод",
+    inputHintChar:"Введите один символ (для ~)",
+    inputHintInt:"Введите одну цифру (для &)",
+    inputOk:"✅ OK", inputCancel:"✖ Отмена",
+    inputKeys:"Enter — подтвердить · Esc — отмена · не более 1 символа",
+    inputDisplayEmpty:"_",
+    examples:{
+      hello:"Привет, мир!", hello2:"Привет, мир! (проще)",
+      quine:"Befunge квин", count:"Счёт 1..9",
+      cat:"Эхо-программа (&)", factorial:"Факториал (6!)",
+      reverse:"Реверс строки"
+    },
+    hints:[
+      {cmd:'0-9',desc:'Положить число в стек'},
+      {cmd:'+',desc:'Сложение: pop a,b → push b+a'},
+      {cmd:'-',desc:'Вычитание: pop a,b → push b-a'},
+      {cmd:'*',desc:'Умножение: pop a,b → push b*a'},
+      {cmd:'/',desc:'Деление: pop a,b → push b/a (целое)'},
+      {cmd:'%',desc:'Остаток: pop a,b → push b%a'},
+      {cmd:'!',desc:'Логическое НЕ: 0→1, иначе 0'},
+      {cmd:'`',desc:'Больше: a>b → 1 иначе 0'},
+      {cmd:'> < ^ v',desc:'Смена направления: вправо, влево, вверх, вниз'},
+      {cmd:'?',desc:'Случайное направление'},
+      {cmd:'_',desc:'Горизонтальное если: 0→вправо, иначе влево'},
+      {cmd:'|',desc:'Вертикальное если: 0→вниз, иначе вверх'},
+      {cmd:'"',desc:'Строковый режим: коды до следующей "'},
+      {cmd:':',desc:'Дублировать вершину стека'},
+      {cmd:'\\',desc:'Поменять два верхних значения'},
+      {cmd:'$',desc:'Сбросить вершину стека'},
+      {cmd:'.',desc:'Вывести число (pop)'},
+      {cmd:',',desc:'Вывести ASCII-символ (pop)'},
+      {cmd:'#',desc:'Мост: пропустить клетку'},
+      {cmd:'g',desc:'Get: pop y,x → push field[y][x]'},
+      {cmd:'p',desc:'Put: pop y,x,v → field[y][x]=v'},
+      {cmd:'&',desc:'Ввод одной цифры в стек'},
+      {cmd:'~',desc:'Ввод одного символа (ASCII) в стек'},
+      {cmd:'@',desc:'Конец программы'}
+    ]
+  }
+};
+function toggleLanguage(){ switchLanguage(currentLang==='en'?'ru':'en'); }
+function switchLanguage(lang){
+  currentLang=lang; const t=translations[lang];
+  document.getElementById('langBtn').innerText=lang==='en'?'RU':'EN';
+  document.getElementById('title').innerText=t.title;
+  document.getElementById('hintsTitle').innerText=t.hintsTitle;
+  document.getElementById('labelOutput').innerText=t.labelOutput;
+  document.getElementById('labelSpeed').innerText=t.labelSpeed;
+  document.getElementById('code').placeholder=t.placeholder;
+  document.getElementById('btnRun').innerText=t.btnRun;
+  document.getElementById('btnWait').innerText=t.btnWait;
+  document.getElementById('btnContinue').innerText=t.btnContinue;
+  document.getElementById('btnStepFwd').innerText=t.btnStepFwd;
+  document.getElementById('btnStepBwd').innerText=t.btnStepBwd;
+  document.getElementById('btnStop').innerText=t.btnStop;
+  document.getElementById('btnClear').innerText=t.btnClear;
+  document.getElementById('btnAscii').innerText=t.btnAscii;
+  document.getElementById('optWrap').innerText=t.optWrap;
+  document.getElementById('optBounce').innerText=t.optBounce;
+  document.getElementById('execStatus').innerText=t.execStatus;
+  document.getElementById('labelStack').innerText=t.labelStack;
+  document.getElementById('asciiTitle').innerText=t.asciiTitle;
+  document.getElementById('outputHistoryTitle').innerText=t.outputHistoryTitle;
+  document.getElementById('btnCopy').innerText=t.btnCopy;
+  document.getElementById('asciiEditorTitle').innerText=t.asciiEditorTitle;
+  document.getElementById('asciiEditorHint').innerHTML=t.asciiEditorHint;
+  document.getElementById('btnApplyAscii').innerText=t.btnApplyAscii;
+  document.getElementById('btnResetAscii').innerText=t.btnResetAscii;
+  document.getElementById('btnCloseAscii').innerText=t.btnCloseAscii;
+  document.getElementById('pfTitle').innerText=t.pfTitle;
+  document.getElementById('inputModalTitle').innerText=t.inputTitle;
+  document.getElementById('inputModalHint').innerText = inputModalMode==='int'?t.inputHintInt:t.inputHintChar;
+  document.getElementById('inputModalKeys').innerText=t.inputKeys;
+  document.getElementById('inputModalOk').innerText=t.inputOk;
+  document.getElementById('inputModalCancel').innerText=t.inputCancel;
+  updateExamplesDropdown();
+  const grid=document.getElementById('hintGrid'); grid.innerHTML='';
+  t.hints.forEach(h=>{grid.innerHTML+='<div class="hint-item"><code>'+h.cmd+'</code> — '+h.desc+'</div>';});
+  updateStatsLabels(); updateCommandInfo(); updateAsciiBadge(); updateAsciiTableDisplay(); renderOutputHistory();
+  const divOpts={
+    en:{ask:'Division by 0: Ask input',zero:'Division by 0: Return 0',value:'Division by 0: Return value…',stop:'Division by 0: Stop program'},
+    ru:{ask:'Деление на 0: Спросить ввод',zero:'Деление на 0: Вернуть 0',value:'Деление на 0: Вернуть число…',stop:'Деление на 0: Остановить'}
+  };
+  document.getElementById('optDivAsk').innerText=divOpts[lang].ask;
+  document.getElementById('optDivZero').innerText=divOpts[lang].zero;
+  document.getElementById('optDivValue').innerText=divOpts[lang].value;
+  document.getElementById('optDivStop').innerText=divOpts[lang].stop;
+}
+function updateStatsLabels(){
+  const t=translations[currentLang];
+  document.getElementById('statSteps').innerHTML=t.statSteps+' <span class="num" id="totalSteps">'+totalSteps+'</span>';
+  const sp=parseInt(document.getElementById('speed').value);
+  const spTxt=sp===0?'⚡ MAX':sp+' cmd/s';
+  document.getElementById('statSpeed').innerHTML=t.statSpeed+' <span class="num" id="stepsPerTick">'+spTxt+'</span>';
+}
+
+// =====================================================================
+// ОСНОВНАЯ ЛОГИКА BEFUNGE
+// =====================================================================
+let playfield=new Array(W*H).fill(' ');
+let stack=[];
+let pcX=0,pcY=0,dx=1,dy=0;
+let stringMode=false;
+let directionMode='wrap';
+let divZeroMode='ask';
+let divZeroValue=0;
+let isRunning=false,isPaused=false,isStopped=false;
+let timer=null,instantChunkTimer=null;
+let totalSteps=0;
+let outputHistory=[],outputHistoryCounter=0;
+let history=[];
+let currentCmdChar=' ';
+
+// Ввод
+let inputModalMode='char';     // 'char' | 'int'
+let inputModalValue='';        // текущее значение в модалке
+let pendingInputResolve=null;  // callback
+let waitingForInput=false;
+
+function idx(x,y){return y*W+x;}
+function getCell(x,y){return playfield[idx(x,y)];}
+function setCell(x,y,v){playfield[idx(x,y)]=v;}
+
+function normalizeX(x){return ((x%W)+W)%W;}
+function normalizeY(y){return ((y%H)+H)%H;}
+
+function updatePosition(){
+  if(directionMode==='wrap'){
+    pcX=normalizeX(pcX); pcY=normalizeY(pcY);
+  } else {
+    if(pcX<0){pcX=0;dx=Math.abs(dx);}
+    if(pcX>=W){pcX=W-1;dx=-Math.abs(dx);}
+    if(pcY<0){pcY=0;dy=Math.abs(dy);}
+    if(pcY>=H){pcY=H-1;dy=-Math.abs(dy);}
+  }
+}
+
+function resetExecutionState(){
+  stack=[]; pcX=0;pcY=0;dx=1;dy=0;stringMode=false;totalSteps=0;
+  history=[]; document.getElementById('output').value='';
+  outputHistory=[];outputHistoryCounter=0;renderOutputHistory();
+  currentCmdChar=' ';
+  waitingForInput=false;
+  pendingInputResolve=null;
+  closeInputModal(true);
+  const badge=document.getElementById('execTimeBadge');
+  badge.textContent='⏱️ --';badge.className='badge badge-std';
+}
+
+function prepareCodeToPlayfield(){
+  const raw=document.getElementById('code').value;
+  playfield=new Array(W*H).fill(' ');
+  const lines=raw.split('\n');
+  for(let y=0;y<Math.min(H,lines.length);y++){
+    const line=lines[y];
+    for(let x=0;x<Math.min(W,line.length);x++){
+      setCell(x,y,line[x]);
+    }
+  }
+}
+
+function updateSpeed(){
+  const sp=parseInt(document.getElementById('speed').value);
+  document.getElementById('speedVal').innerText=sp;
+  if(isRunning&&!isPaused){
+    clearInterval(timer);
+    if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+    if(sp===0){ executeInstantNoOpt(); }
+    else{
+      const delay=Math.max(1,Math.round(1000/sp));
+      timer=setInterval(()=>{if(!isPaused&&isRunning&&!waitingForInput)executeStep(true);},delay);
+    }
+  }
+  updateStatsLabels();
+}
+
+function updateDirectionMode(){
+  directionMode=document.getElementById('directionModeSelect').value;
+  const b=document.getElementById('dirBadge');
+  b.textContent=directionMode==='wrap'?(currentLang==='ru'?'↻ Закольцованный':'↻ Wrap-Around'):(currentLang==='ru'?'⇄ Отражение':'⇄ Bounce');
+  b.className='badge badge-std';
+}
+
+function updateDivZeroMode(){
+  const sel=document.getElementById('divZeroModeSelect');
+  divZeroMode=sel.value;
+  if(divZeroMode==='value'){
+    const raw=prompt(
+      currentLang==='ru'
+        ? 'Какое число возвращать при делении на 0?'
+        : 'What value to return on division by zero?',
+      String(divZeroValue)
+    );
+    if(raw===null){ // отмена — откатываемся на ask
+      divZeroMode='ask';
+      sel.value='ask';
+    } else {
+      const n=parseInt(raw,10);
+      divZeroValue=isNaN(n)?0:n;
+    }
+  }
+  try{localStorage.setItem('bf_divZeroMode',divZeroMode);}catch(e){}
+  try{localStorage.setItem('bf_divZeroValue',String(divZeroValue));}catch(e){}
+}
+function loadDivZeroMode(){
+  try{
+    const m=localStorage.getItem('bf_divZeroMode');
+    if(m==='ask'||m==='zero'||m==='value'||m==='stop'){
+      divZeroMode=m;
+      document.getElementById('divZeroModeSelect').value=m;
+    }
+    const v=localStorage.getItem('bf_divZeroValue');
+    if(v!==null){const n=parseInt(v,10);if(!isNaN(n))divZeroValue=n;}
+  }catch(e){}
+}
+
+function stackPush(v){stack.push(v);}
+function stackPop(){if(stack.length===0)return 0;return stack.pop();}
+
+// =====================================================================
+// МОДАЛКА ВВОДА
+// =====================================================================
+function openInputModal(mode){
+  return new Promise(resolve=>{
+    inputModalMode=mode;
+    inputModalValue='';
+    pendingInputResolve=resolve;
+    waitingForInput=true;
+    const ov=document.getElementById('inputModalOverlay');
+    const disp=document.getElementById('inputDisplay');
+    const t=translations[currentLang];
+    document.getElementById('inputModalTitle').innerText=t.inputTitle;
+    document.getElementById('inputModalHint').innerText = mode==='int'?t.inputHintInt:t.inputHintChar;
+    document.getElementById('inputModalKeys').innerText=t.inputKeys;
+    disp.innerText=t.inputDisplayEmpty;
+    disp.style.color='#6c7086';
+    ov.classList.add('open');
+    // фокус на кнопку OK, чтобы Enter работал
+    setTimeout(()=>document.getElementById('inputModalOk').focus(),0);
+  });
+}
+function closeInputModal(silent){
+  const ov=document.getElementById('inputModalOverlay');
+  if(ov)ov.classList.remove('open');
+  waitingForInput=false;
+  if(silent){pendingInputResolve=null;inputModalValue='';}
+}
+function updateInputDisplay(){
+  const disp=document.getElementById('inputDisplay');
+  const t=translations[currentLang];
+  if(inputModalValue===''){disp.innerText=t.inputDisplayEmpty;disp.style.color='#6c7086';}
+  else{disp.innerText=inputModalValue;disp.style.color='#f38ba8';}
+}
+function confirmInput(){
+  const val=inputModalValue;
+  const r=pendingInputResolve;
+  pendingInputResolve=null;
+  closeInputModal(true);
+  if(r)r(val===''?null:val);
+}
+function cancelInput(){
+  const r=pendingInputResolve;
+  pendingInputResolve=null;
+  closeInputModal(true);
+  if(r)r(null);
+}
+function handleInputKey(e){
+  if(!waitingForInput)return;
+  if(e.key==='Enter'){e.preventDefault();confirmInput();return;}
+  if(e.key==='Escape'){e.preventDefault();cancelInput();return;}
+  if(e.key==='Backspace'){
+    e.preventDefault();inputModalValue='';updateInputDisplay();return;
+  }
+  // Только 1 символ
+  if(e.key.length===1){
+    e.preventDefault();
+    let ch=e.key;
+    if(inputModalMode==='int'){
+      if(!/[0-9]/.test(ch))return;
+    }
+    inputModalValue=ch;
+    updateInputDisplay();
+  }
+}
+
+// =====================================================================
+// ИСПОЛНЕНИЕ
+// =====================================================================
+function executeStep(updateUI_){
+  if(isStopped||!isRunning)return false;
+  if(waitingForInput)return true; // пауза
+  if(totalSteps>=MAX_ITERATIONS){
+    isStopped=true;isRunning=false;
+    const badge=document.getElementById('execTimeBadge');
+    badge.textContent='⚠️ Limit reached';badge.className='badge badge-warn';
+    if(updateUI_)updateUI(); return false;
+  }
+  const cmd=getCell(pcX,pcY);
+  currentCmdChar=cmd;
+  if(updateUI_)saveHistory();
+
+  if(stringMode){
+    if(cmd==='"'){stringMode=false;}
+    else{stackPush(cmd.charCodeAt(0));}
+    movePC();
+    totalSteps++;
+    if(updateUI_)updateUI();
+    return true;
+  }
+
+  switch(cmd){
+    case '0':case '1':case '2':case '3':case '4':
+    case '5':case '6':case '7':case '8':case '9':
+      stackPush(parseInt(cmd)); movePC(); break;
+    case '+':{const a=stackPop(),b=stackPop();stackPush(a+b);movePC();break;}
+    case '-':{const a=stackPop(),b=stackPop();stackPush(b-a);movePC();break;}
+    case '*':{const a=stackPop(),b=stackPop();stackPush(a*b);movePC();break;}
+    case '/':{
+      const a=stackPop(),b=stackPop();
+      if(a===0){
+        handleDivZero(b); // асинхронно при 'ask', синхронно иначе
+        return true;      // movePC/step делает handleDivZero
+      }
+      stackPush(Math.trunc(b/a));
+      movePC();break;
+    }
+    case '%':{
+      const a=stackPop(),b=stackPop();
+      if(a===0){
+        handleDivZero(b);
+        return true;
+      }
+      stackPush(b%a);
+      movePC();break;
+    }
+    case '!':{const a=stackPop();stackPush(a===0?1:0);movePC();break;}
+    case '`':{const a=stackPop(),b=stackPop();stackPush(b>a?1:0);movePC();break;}
+    case '>':dx=1;dy=0;movePC();break;
+    case '<':dx=-1;dy=0;movePC();break;
+    case '^':dx=0;dy=-1;movePC();break;
+    case 'v':dx=0;dy=1;movePC();break;
+    case '?':{const dirs=[[1,0],[-1,0],[0,-1],[0,1]];const d=dirs[Math.floor(Math.random()*4)];dx=d[0];dy=d[1];movePC();break;}
+    case '_':{const a=stackPop();if(a===0){dx=1;dy=0;}else{dx=-1;dy=0;}movePC();break;}
+    case '|':{const a=stackPop();if(a===0){dx=0;dy=1;}else{dx=0;dy=-1;}movePC();break;}
+    case '"':stringMode=true;movePC();break;
+    case ':':{const a=stack.length>0?stack[stack.length-1]:0;stackPush(a);movePC();break;}
+    case '\\':{const a=stackPop(),b=stackPop();stackPush(a);stackPush(b);movePC();break;}
+    case '$':stackPop();movePC();break;
+    case '.':{
+    const val=stackPop();
+    const outputEl=document.getElementById('output');
+    outputEl.value+=String(val)+' ';
+    outputHistoryCounter++;
+    outputHistory.push({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:String(val),type:'int'});
+    movePC();
+    break;
+    }
+    case ',':{const val=stackPop();const outChar=codeToCharForOutput(val);
+      let written;
+      if(outChar!==null){document.getElementById('output').value+=outChar;written=outChar;}
+      else{document.getElementById('output').value+='['+val+']';written='['+val+']';}
+      outputHistoryCounter++;outputHistory.push({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:written,type:'char'});
+      movePC();break;}
+    case '#':{movePC();movePC();break;}
+    case 'g':{const y=stackPop(),x=stackPop();stackPush(getCell(normalizeX(x),normalizeY(y)).charCodeAt(0)||0);movePC();break;}
+    case 'p':{const y=stackPop(),x=stackPop(),v=stackPop();
+      setCell(normalizeX(x),normalizeY(y),String.fromCharCode(v));movePC();break;}
+    case '&':{
+      // Ввод одной цифры — модалка
+      isPaused=true; // приостанавливаем таймер
+      clearInterval(timer);
+      if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+      if(updateUI_)updateUI();
+      openInputModal('int').then(val=>{
+        let num=0;
+        if(val!==null&&val!==''&&/[0-9]/.test(val))num=parseInt(val,10);
+        stackPush(num);
+        totalSteps++;
+        // продолжаем с той же клетки (movePC сделан после ввода)
+        // но movePC уже вызван ниже в общем коде — нет, поэтому вызываем здесь:
+        // На самом деле после ввода мы должны сдвинуть PC
+        // Перемещаем после resolve
+        // ВАЖНО: movePC и totalSteps++ не должны дублироваться
+        // Поэтому отдельная ветка:
+        // (ниже return true уже сделан)
+        // Но т.к. ветка switch завершается break — мы должны сделать всё сами.
+        // Реализуем корректно: см. ниже — мы НЕ используем общий movePC для этой ветки.
+        // Отменяем общий код через флаг:
+        // (вставляем сдвиг здесь)
+        movePC();
+        totalSteps++;
+        isPaused=false;
+        if(isRunning&&!isStopped){
+          const sp=parseInt(document.getElementById('speed').value);
+          if(sp===0){executeInstantNoOpt();}
+          else{
+            const delay=Math.max(1,Math.round(1000/sp));
+            timer=setInterval(()=>{if(!isPaused&&isRunning&&!waitingForInput)executeStep(true);},delay);
+          }
+        }
+        if(updateUI_)updateUI();
+      });
+      // Возвращаемся сразу — дальнейший общий код (movePC/totalSteps) не выполнять
+      return true;
+    }
+    case '~':{
+      isPaused=true;
+      clearInterval(timer);
+      if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+      if(updateUI_)updateUI();
+      openInputModal('char').then(val=>{
+        let code=0;
+        if(val!==null&&val!=='')code=charToCode(val);
+        stackPush(code);
+        totalSteps++;
+        movePC();
+        totalSteps++;
+        isPaused=false;
+        if(isRunning&&!isStopped){
+          const sp=parseInt(document.getElementById('speed').value);
+          if(sp===0){executeInstantNoOpt();}
+          else{
+            const delay=Math.max(1,Math.round(1000/sp));
+            timer=setInterval(()=>{if(!isPaused&&isRunning&&!waitingForInput)executeStep(true);},delay);
+          }
+        }
+        if(updateUI_)updateUI();
+      });
+      return true;
+    }
+    case '@':
+      isRunning=false;isStopped=true;
+      if(updateUI_)updateUI();
+      return false;
+    default:
+      movePC();break;
+  }
+  totalSteps++;
+  if(updateUI_)updateUI();
+  return true;
+}
+
+function movePC(){
+  pcX+=dx;pcY+=dy;
+  updatePosition();
+}
+
+function handleDivZero(numerator){
+  switch(divZeroMode){
+    case 'zero':
+      stackPush(0); movePC(); totalSteps++; updateUI(); return;
+    case 'value':
+      stackPush(divZeroValue); movePC(); totalSteps++; updateUI(); return;
+    case 'stop':
+      isRunning=false;isStopped=true;
+      const b=document.getElementById('execTimeBadge');
+      b.textContent='⚠️ Div by 0'; b.className='badge badge-warn';
+      updateUI(); return;
+    case 'ask':
+    default:{
+      // ставим на паузу и спрашиваем число
+      isPaused=true;
+      clearInterval(timer);
+      if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+      updateUI();
+      openInputModal('int').then(val=>{
+        let num;
+        if(val===null||val===''){
+          num=0; // отмена — как 0 (или можно остановить; выберите поведение)
+        } else {
+          const parsed=parseInt(val,10);
+          num=isNaN(parsed)?0:parsed;
+        }
+        stackPush(num);
+        movePC();
+        totalSteps++;
+        isPaused=false;
+        if(isRunning&&!isStopped){
+          const sp=parseInt(document.getElementById('speed').value);
+          if(sp===0){executeInstantNoOpt();}
+          else{
+            const delay=Math.max(1,Math.round(1000/sp));
+            timer=setInterval(()=>{if(!isPaused&&isRunning&&!waitingForInput)executeStep(true);},delay);
+          }
+        }
+        updateUI();
+      });
+      return;
+    }
+  }
+}
+
+function executeInstantNoOpt(){
+  if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+  function chunk(){
+    if(!isRunning||isPaused||isStopped||waitingForInput){instantChunkTimer=null;return;}
+    for(let i=0;i<CHUNK_SIZE;i++){
+      if(!executeStep(false)){updateUI();instantChunkTimer=null;return;}
+      if(totalSteps>=MAX_ITERATIONS)break;
+      if(waitingForInput){updateUI();instantChunkTimer=null;return;}
+    }
+    updateUI();
+    if(!isRunning||isStopped||totalSteps>=MAX_ITERATIONS||waitingForInput){instantChunkTimer=null;return;}
+    instantChunkTimer=setTimeout(chunk,0);
+  }
+  chunk();
+}
+
+function runCode(){
+  if(!isRunning){
+    prepareCodeToPlayfield();
+    resetExecutionState();
+    isRunning=true;isStopped=false;
+  }
+  isPaused=false;
+  const sp=parseInt(document.getElementById('speed').value);
+  if(sp===0){
+    clearInterval(timer); executeInstantNoOpt();
+  } else {
+    clearInterval(timer);
+    if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+    const delay=Math.max(1,Math.round(1000/sp));
+    timer=setInterval(()=>{if(!isPaused&&isRunning&&!waitingForInput)executeStep(true);},delay);
+    updateUI();
+  }
+}
+function waitCode(){isPaused=true;clearInterval(timer);if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}updateUI();}
+function continueCode(){
+  if(waitingForInput)return; // ждём ввода — нельзя продолжать
+  isPaused=false;document.getElementById('execStatus').classList.remove('active');runCode();
+}
+function stopCode(){
+  isRunning=false;isPaused=false;isStopped=true;
+  clearInterval(timer);
+  if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+  if(waitingForInput){cancelInput();}
+  updateUI();
+}
+function stepForward(){
+  if(waitingForInput)return;
+  if(!isRunning){
+    prepareCodeToPlayfield();
+    resetExecutionState();
+    isRunning=true;isStopped=false;
+  }
+  isPaused=true;clearInterval(timer);if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+  executeStep(true);
+}
+function stepBackward(){
+  if(history.length===0)return;
+  isPaused=true;clearInterval(timer);if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
+  if(waitingForInput){cancelInput();}
+  const s=history.pop();
+  playfield=s.playfield.slice();
+  stack=s.stack.slice();
+  pcX=s.pcX;pcY=s.pcY;dx=s.dx;dy=s.dy;stringMode=s.stringMode;
+  totalSteps=s.totalSteps;
+  document.getElementById('output').value=s.output;
+  outputHistory=s.outputHistory.slice();
+  outputHistoryCounter=s.outputHistoryCounter;
+  isRunning=true;
+  updateUI();
+}
+function saveHistory(){
+  history.push({
+    playfield:playfield.slice(), stack:stack.slice(),
+    pcX,pcY,dx,dy,stringMode,totalSteps,
+    output:document.getElementById('output').value,
+    outputHistory:outputHistory.slice(), outputHistoryCounter
+  });
+  if(history.length>MAX_HISTORY)history.shift();
+}
+
+function clearAll(){
+  stopCode();
+  document.getElementById('code').value='';
+  document.getElementById('output').value='';
+  document.getElementById('exampleSelect').value='';
+  resetExecutionState();
+  prepareCodeToPlayfield();
+  updateUI();
+}
+
+function updateUI(){
+  const pfEl=document.getElementById('playfield');
+  if(pfEl){
+    let html='';
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        let ch=getCell(x,y);
+        let display=ch===' '?'·':ch;
+        let cls='pf-cell';
+        if(x===pcX&&y===pcY){
+          cls+=' pc';
+          if(dx===1)cls+=' arrow-r'; else if(dx===-1)cls+=' arrow-l';
+          else if(dy===-1)cls+=' arrow-u'; else if(dy===1)cls+=' arrow-d';
+        }
+        const esc=display==='&'?'&amp;':display==='<'?'&lt;':display==='>'?'&gt;':display;
+        html+=`<div class="${cls}" data-x="${x}" data-y="${y}">${esc}</div>`;
+      }
+    }
+    pfEl.innerHTML=html;
+    pfEl.onclick=(e)=>{
+      const cell=e.target.closest('.pf-cell');
+      if(!cell)return;
+      const x=parseInt(cell.dataset.x), y=parseInt(cell.dataset.y);
+      editCell(x,y);
+    };
+  }
+  const stackEl=document.getElementById('stack');
+  if(stack.length===0)stackEl.innerHTML='<div class="stack-empty">Empty stack</div>';
+  else{
+    let sh='';
+    for(let i=stack.length-1;i>=0;i--){
+      const v=stack[i];
+      const disp=codeToDisplayChar(v);
+      const charTxt=disp!==null?disp:'?';
+      sh+=`<div class="stack-item${i===stack.length-1?' top':''}"><span class="sv">${v}</span><span class="sa">${escapeHTML(charTxt)}</span></div>`;
+    }
+    stackEl.innerHTML=sh;
+  }
+  document.getElementById('btnRun').disabled=isRunning&&!isPaused;
+  document.getElementById('btnWait').disabled=!isRunning||isPaused;
+  document.getElementById('btnContinue').disabled=!isRunning||!isPaused||waitingForInput;
+  document.getElementById('btnStepFwd').disabled=(isRunning&&!isPaused)||waitingForInput;
+  document.getElementById('btnStepBwd').disabled=history.length===0||waitingForInput;
+  document.getElementById('code').disabled=isRunning&&!isPaused;
+  const st=document.getElementById('execStatus');
+  if(isRunning&&!isPaused&&parseInt(document.getElementById('speed').value)===0)st.classList.add('active');
+  else st.classList.remove('active');
+  const dirMap={'1,0':'→','-1,0':'←','0,-1':'↑','0,1':'↓'};
+  document.getElementById('posInfo').textContent=`x:${pcX} y:${pcY} dir:${dirMap[dx+','+dy]||'?'}`;
+  document.getElementById('pfPos').textContent=`PC: (${pcX},${pcY})`;
+  document.getElementById('totalSteps').textContent=totalSteps;
+  document.getElementById('cmdIndex').textContent=`(${pcX},${pcY})`;
+  document.getElementById('cmdChar').textContent=currentCmdChar;
+  updateCommandInfo();
+  updateStatsLabels();
+  renderOutputHistory();
+  updateAsciiBadge();
+  updateCodeHighlight();
+}
+function updateCommandInfo(){
+  const t=translations[currentLang];
+  if(isRunning){
+    const cmd=currentCmdChar;
+    const hint=t.hints.find(h=>h.cmd===cmd)||t.hints.find(h=>h.cmd.includes(cmd));
+    document.getElementById('cmdDesc').textContent=hint?hint.desc:cmd;
+  } else {
+    document.getElementById('cmdDesc').textContent=t.cmdWaiting;
+  }
+}
+
+function renderOutputHistory(){
+  const list=document.getElementById('outputHistoryList'); if(!list)return;
+  const t=translations[currentLang];
+  if(outputHistory.length===0){
+    list.innerHTML='<div class="output-history-empty">'+t.outputHistoryEmpty+'</div>';return;
+  }
+  let html='<div class="output-history-row header"><span>#</span><span>Pos</span><span>Value</span><span>Type</span><span>Char</span></div>';
+  for(let i=outputHistory.length-1;i>=0;i--){
+    const e=outputHistory[i];
+    let cls='char-cell';
+    let displayChar=e.char;
+    if(e.type==='char'){
+      if(customAsciiReverse&&customAsciiReverse[e.val]!==undefined){displayChar=customAsciiReverse[e.val];cls+=' custom-char';}
+      else if(CONTROL_REVERSE[e.val]!==undefined){displayChar=CONTROL_REVERSE[e.val];cls+=' control-char';}
+      else if(e.val===10)displayChar='LF';else if(e.val===13)displayChar='CR';
+      else if(e.val===9)displayChar='TAB';else if(e.val===32)displayChar='SP';
+      else if(e.val<32)displayChar='^'+String.fromCharCode(64+e.val);
+    }
+    html+=`<div class="output-history-row">
+      <span class="num-cell">${e.n}</span>
+      <span class="coord-cell">(${e.x},${e.y})</span>
+      <span class="val-cell">${e.val}</span>
+      <span class="coord-cell">${e.type}</span>
+      <span class="${cls}">${escapeHTML(displayChar)}</span>
+    </div>`;
+  }
+  list.innerHTML=html;
+}
+function clearOutputHistory(){outputHistory=[];outputHistoryCounter=0;renderOutputHistory();}
+function copyOutput(){
+  const txt=document.getElementById('output').value; if(!txt)return;
+  navigator.clipboard.writeText(txt).then(()=>{
+    const b=document.getElementById('btnCopy');const o=translations[currentLang].btnCopy;
+    b.innerText=translations[currentLang].btnCopied;b.style.background='#a6e3a1';b.style.color='#11111b';
+    setTimeout(()=>{b.innerText=o;b.style.background='';b.style.color='';},1500);
+  });
+}
+function escapeHTML(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function editCell(x,y){
+  const cur=getCell(x,y);
+  const ch=prompt(`Cell (${x},${y}) — enter character:`,cur===' '?'':cur);
+  if(ch===null)return;
+  setCell(x,y,ch.length>0?ch[0]:' ');
+  const lines=[];
+  for(let yy=0;yy<H;yy++){
+    let line='';
+    for(let xx=0;xx<W;xx++)line+=getCell(xx,yy);
+    lines.push(line.replace(/ +$/,''));
+  }
+  document.getElementById('code').value=lines.join('\n');
+  updateUI();
+}
+
+function updateCodeHighlight(){
+  const ta=document.getElementById('code');
+  const hl=document.getElementById('codeHighlight');
+  const code=ta.value;
+  let html='';
+  for(let i=0;i<code.length;i++){
+    let ch=code[i];
+    let esc=ch==='&'?'&amp;':ch==='<'?'&lt;':ch==='>'?'&gt;':(ch===' '?'&nbsp;':ch);
+    if(i===getRawIndexForPC())html+='<span class="highlight-char">'+esc+'</span>';
+    else html+=esc;
+  }
+  hl.innerHTML=html;
+  hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;
+}
+function getRawIndexForPC(){
+  if(!isRunning)return -1;
+  let line=0,col=0;
+  const raw=document.getElementById('code').value;
+  for(let i=0;i<raw.length;i++){
+    if(line===pcY&&col===pcX)return i;
+    if(raw[i]==='\n'){line++;col=0;}else col++;
+  }
+  return -1;
+}
+
+// =====================================================================
+// ПРИМЕРЫ
+// =====================================================================
+const examples={
+  hello2:{code:'"!dlroW ,olleH">:#,_@',input:'',title:'Hello World! (simpler)'},
+  hello:{code:'>              v\nv  ,,,,,"Hello"<\n>48*,          v\nv,,,,,,"World!"<\n>25*,@',input:'',title:'Hello World! (classic)'},
+  quine:{code:'01->1# +# :# 0# g# ,# :# 5# 8# *# 4# +# -# _@',input:'',title:'Befunge Quine'},
+  count:{code:'1>:.:1+:#v_@\n ^        <',input:'',title:'Count 1..9'},
+  cat:{code:'~:1+!#@_,',input:'Hello Befunge!',title:'Cat program (~ echo)'},
+  factorial:{code:'6>1-:v v *_$.@\n ^    $>\\:^',input:'',title:'Factorial (6!)'},
+  reverse:{code:'>~:1+!#@_\\,',input:'Reverse me',title:'Reverse input string'}
+};
+function updateExamplesDropdown(){
+  const sel=document.getElementById('exampleSelect');
+  const t=translations[currentLang];
+  sel.innerHTML=`<option value="">${t.examplePlaceholder}</option>`;
+  for(const k of Object.keys(examples)){
+    sel.innerHTML+=`<option value="${k}" title="${examples[k].title}">${t.examples[k]||k}</option>`;
+  }
+}
+function loadExample(){
+  const k=document.getElementById('exampleSelect').value;
+  if(!k||!examples[k])return;
+  stopCode();
+  document.getElementById('code').value=examples[k].code;
+  document.getElementById('output').value='';
+  resetExecutionState();
+  prepareCodeToPlayfield();
+  updateUI();
+  updateCodeHighlight();
+}
+
+// =====================================================================
+// SHARE LINK
+// =====================================================================
+function generateShareLink(){
+  const state={
+    code:document.getElementById('code').value,
+    dirMode:directionMode,
+    asciiRaw:customAsciiRawText,
+    lang:currentLang,
+    divZeroMode:divZeroMode,
+    divZeroValue:divZeroValue,
+  };
+  try{
+    const json=JSON.stringify(state);
+    const encoded=btoa(unescape(encodeURIComponent(json)));
+    const url=location.origin+location.pathname+'#bf='+encoded;
+    navigator.clipboard.writeText(url).then(()=>{
+      const b=document.getElementById('btnShare');const o=b.textContent;
+      b.textContent='✅ Copied!';b.style.background='#a6e3a1';
+      setTimeout(()=>{b.textContent=o;b.style.background='';},1500);
+    }).catch(()=>prompt('Copy this link:',url));
+  }catch(e){alert('Failed to generate link: '+e.message);}
+}
+function loadFromHash(){
+  const hash=location.hash;
+  if(!hash.startsWith('#bf='))return false;
+  try{
+    const encoded=hash.substring(4);
+    const json=decodeURIComponent(escape(atob(encoded)));
+    const state=JSON.parse(json);
+    if(state.asciiRaw){
+      const parsed=parseAsciiTable(state.asciiRaw);
+      if(Object.keys(parsed.map).length>0){
+        customAsciiMap=parsed.map;customAsciiReverse=buildReverseMap(parsed.map);customAsciiRawText=state.asciiRaw;
+      }
+    } else {customAsciiMap=null;customAsciiReverse=null;customAsciiRawText=null;}
+    directionMode=state.dirMode||'wrap';
+    if(state.divZeroMode==='ask'||state.divZeroMode==='zero'||state.divZeroMode==='value'||state.divZeroMode==='stop'){
+      divZeroMode=state.divZeroMode;
+      document.getElementById('divZeroModeSelect').value=divZeroMode;
+    }
+    if(typeof state.divZeroValue==='number')divZeroValue=state.divZeroValue;
+    document.getElementById('directionModeSelect').value=directionMode;
+    document.getElementById('code').value=state.code||'';
+    document.getElementById('output').value='';
+    outputHistory=[];outputHistoryCounter=0;
+    switchLanguage(state.lang==='ru'?'ru':'en');
+    resetExecutionState();
+    prepareCodeToPlayfield();
+    updateUI();updateCodeHighlight();updateDirectionMode();
+    return true;
+  }catch(e){console.error('Failed to load state:',e);return false;}
+}
+
+// =====================================================================
+// ИНИЦИАЛИЗАЦИЯ
+// =====================================================================
+window.onload=function(){
+  switchLanguage('en');
+  const loaded=loadFromHash();
+  if(!loaded){
+    document.getElementById('code').value=examples.hello2.code;
+    prepareCodeToPlayfield();
+    updateUI();
+    updateCodeHighlight();
+  }
+  loadDivZeroMode();
+  updateDirectionMode();
+  updateStatsLabels();
+  updateAsciiBadge();
+  if(!loaded)updateAsciiTableDisplay();
+  updateExamplesDropdown();
+  document.getElementById('code').addEventListener('input',()=>{
+    updateCodeHighlight();
+  });
+  document.getElementById('code').addEventListener('scroll',()=>{
+    const ta=document.getElementById('code'),hl=document.getElementById('codeHighlight');
+    hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;
+  });
+  document.addEventListener('keydown',e=>{
+    if(waitingForInput){handleInputKey(e);return;}
+    if(e.key==='Escape')closeAsciiEditor();
+  });
+  document.getElementById('asciiEditorOverlay').addEventListener('click',function(e){
+    if(e.target===this)closeAsciiEditor();
+  });
+  updateUI();
+};
+</script>
+</body>
+</html>
