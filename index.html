@@ -1139,13 +1139,13 @@ function executeStep(updateUI_){
       if(updateUI_) updateUI();
 
       openInputModal('int').then(val => {
-        let num = -1n;
+        let num = 0n;
 
         if(val !== null && /^-?\d+$/.test(val.trim())){
           try {
             num = BigInt(val.trim());
           } catch(e) {
-            num = -1n;
+            num = 0n;
           }
         }
 
@@ -1183,7 +1183,7 @@ function executeStep(updateUI_){
       if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
       if(updateUI_)updateUI();
       openInputModal('char').then(val=>{
-        let code=-1;
+        let code=0;
         if(val!==null&&val!=='')code=charToCode(val);
         stackPush(code);
         movePC();
@@ -1524,7 +1524,7 @@ const examples={
   hello:{code:'>              v\nv  ,,,,,"Hello"<\n>48*,          v\nv,,,,,,"World!"<\n>25*,@',input:'',title:'Hello World! (classic)'},
   quine:{code:'01->1# +# :# 0# g# ,# :# 5# 8# *# 4# +# -# _@',input:'',title:'Befunge Quine'},
   count:{code:'1"d">1-:  #v_@\n    ^\\+1.:\\<',input:'',title:'Count 1..99'},
-  cat:{code:'>~# :#,_@',input:'Hello Befunge!',title:'Cat program (~ echo)'},
+  cat:{code:'>~# :# 1# +# _$>:#,_@',input:'Hello Befunge!',title:'Cat program (~ echo)'},
   factorial:{code:'&:99p>1-:    #v_99g.@\n     ^p99*g99:<',input:'',title:'Factorial (6!)'},
   reverse:{code:'>~# :# _>:#,_@',input:'Reverse me',title:'Reverse input string'}
 };
