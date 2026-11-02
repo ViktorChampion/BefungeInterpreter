@@ -472,24 +472,47 @@ function charToCode(ch){
   const cp=ch.codePointAt(0); return cp!==undefined?cp:0;
 }
 function codeToDisplayChar(code){
-  if(customAsciiReverse!==null&&customAsciiReverse[code]!==undefined)return customAsciiReverse[code];
-  if(CONTROL_REVERSE[code]!==undefined)return CONTROL_REVERSE[code];
-  if(code>=32&&code<=0x10FFFF&&!CONTROL_CODES.has(code)){
-    try{const ch=String.fromCodePoint(code);if(ch)return ch;}catch(e){}
+  // code может быть BigInt или number — приводим к number
+  let n;
+  try {
+    n = typeof code === 'bigint' ? Number(code) : Number(code);
+  } catch(e) {
+    return null;
+  }
+  if (!Number.isFinite(n)) return null;
+
+  if (customAsciiReverse !== null && customAsciiReverse[n] !== undefined)
+    return customAsciiReverse[n];
+
+  if (CONTROL_REVERSE[n] !== undefined)
+    return CONTROL_REVERSE[n];
+
+  if (n >= 32 && n <= 0x10FFFF && !CONTROL_CODES.has(n)) {
+    try {
+      const ch = String.fromCodePoint(n);
+      if (ch) return ch;
+    } catch(e) {}
   }
   return null;
 }
 function codeToCharForOutput(code){
-  if(customAsciiReverse!==null&&customAsciiReverse[code]!==undefined){
-    const n=customAsciiReverse[code]; const b=getControlBehavior(n);
-    return b!==null?b:n;
+  let n = typeof code === 'bigint' ? Number(code) : Number(code);
+  if (!Number.isFinite(n)) return null;
+
+  if (customAsciiReverse !== null && customAsciiReverse[n] !== undefined) {
+    const name = customAsciiReverse[n];
+    const b = getControlBehavior(name);
+    return b !== null ? b : name;
   }
-  if(CONTROL_REVERSE[code]!==undefined){
-    const b=getControlBehavior(CONTROL_REVERSE[code]); return b!==null?b:'';
+  if (CONTROL_REVERSE[n] !== undefined) {
+    const b = getControlBehavior(CONTROL_REVERSE[n]);
+    return b !== null ? b : '';
   }
-  if(code>=0&&code<=0x10FFFF){
-    try{const ch=String.fromCodePoint(code);
-      if(ch&&!CONTROL_CODES.has(code)&&code>=32)return ch;}catch(e){}
+  if (n >= 32 && n <= 0x10FFFF && !CONTROL_CODES.has(n)) {
+    try {
+      const ch = String.fromCodePoint(n);
+      if (ch) return ch;
+    } catch(e) {}
   }
   return null;
 }
@@ -633,7 +656,7 @@ const translations={
     inputDisplayEmpty:"_",
     examples:{
       hello:"Hello World!", hello2:"Hello World! (simpler)",
-      quine:"Befunge Quine", count:"Count 1..9",
+      quine:"Befunge Quine", count:"Count 1..99",
       cat:"Cat program (& echo)", factorial:"Factorial (6!)",
       reverse:"Reverse input string"
     },
@@ -685,13 +708,12 @@ const translations={
     pfTitle:"Игровое поле (80×25) — клик по клетке = редактировать код",
     inputTitle:"Ввод",
     inputHintInt:"Введите целое число (любой длины)",
-    inputHintInt:"Введите одну цифру (для &)",
     inputOk:"✅ OK", inputCancel:"✖ Отмена",
     inputKeys:"Enter — подтвердить · Esc — отмена",
     inputDisplayEmpty:"_",
     examples:{
       hello:"Привет, мир!", hello2:"Привет, мир! (проще)",
-      quine:"Befunge квин", count:"Счёт 1..9",
+      quine:"Befunge квин", count:"Счёт 1..99",
       cat:"Эхо-программа (&)", factorial:"Факториал (6!)",
       reverse:"Реверс строки"
     },
@@ -1079,7 +1101,12 @@ function executeStep(updateUI_){
       else{document.getElementById('output').value+='['+val+']';written='['+val+']';}
       outputHistoryCounter++;outputHistory.push({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:written,type:'char'});
       movePC();break;}
-    case '#':{movePC();movePC();break;}
+    case '#':{
+      pcX += dx*2;
+      pcY += dy*2;
+      updatePosition();
+      break;
+    }
     case 'g': {
       const y=stackPop(), x=stackPop();
       stackPush(
@@ -1112,13 +1139,13 @@ function executeStep(updateUI_){
       if(updateUI_) updateUI();
 
       openInputModal('int').then(val => {
-        let num = 0n;
+        let num = -1n;
 
         if(val !== null && /^-?\d+$/.test(val.trim())){
           try {
             num = BigInt(val.trim());
           } catch(e) {
-            num = 0n;
+            num = -1n;
           }
         }
 
@@ -1156,12 +1183,11 @@ function executeStep(updateUI_){
       if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
       if(updateUI_)updateUI();
       openInputModal('char').then(val=>{
-        let code=0;
+        let code=-1;
         if(val!==null&&val!=='')code=charToCode(val);
         stackPush(code);
-        totalSteps++;
         movePC();
-        totalSteps++;
+        totalSteps++;            // только один раз
         isPaused=false;
         if(isRunning&&!isStopped){
           const sp=parseInt(document.getElementById('speed').value);
@@ -1497,10 +1523,10 @@ const examples={
   hello2:{code:'"!dlroW ,olleH">:#,_@',input:'',title:'Hello World! (simpler)'},
   hello:{code:'>              v\nv  ,,,,,"Hello"<\n>48*,          v\nv,,,,,,"World!"<\n>25*,@',input:'',title:'Hello World! (classic)'},
   quine:{code:'01->1# +# :# 0# g# ,# :# 5# 8# *# 4# +# -# _@',input:'',title:'Befunge Quine'},
-  count:{code:'1>:.:1+:#v_@\n ^        <',input:'',title:'Count 1..9'},
-  cat:{code:'~:1+!#@_,',input:'Hello Befunge!',title:'Cat program (~ echo)'},
-  factorial:{code:'6>1-:v v *_$.@\n ^    $>\\:^',input:'',title:'Factorial (6!)'},
-  reverse:{code:'>~:1+!#@_\\,',input:'Reverse me',title:'Reverse input string'}
+  count:{code:'1"d">1-:  #v_@\n    ^\\+1.:\\<',input:'',title:'Count 1..99'},
+  cat:{code:'>~# :#,_@',input:'Hello Befunge!',title:'Cat program (~ echo)'},
+  factorial:{code:'&:99p>1-:    #v_99g.@\n     ^p99*g99:<',input:'',title:'Factorial (6!)'},
+  reverse:{code:'>~# :# _>:#,_@',input:'Reverse me',title:'Reverse input string'}
 };
 function updateExamplesDropdown(){
   const sel=document.getElementById('exampleSelect');
