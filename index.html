@@ -328,6 +328,13 @@ footer{margin-top:20px; font-size:12px; color:rgba(128,128,128,.5);}
       <option value="stop" id="optDivStop">Division by 0: Stop program</option>
     </select>
 
+    <select id="tildeModeSelect" class="mode-select" onchange="updateTildeMode()">
+      <option value="minus1" id="optTildeMinus1">~ on cancel: -1</option>
+      <option value="zero" id="optTildeZero">~ on cancel: 0</option>
+      <option value="space" id="optTildeSpace">~ on cancel: 32 (space)</option>
+      <option value="value" id="optTildeValue">~ on cancel: value…</option>
+    </select>
+
     <span class="execution-status" id="execStatus">⏳ Running...</span>
   </div>
 
@@ -437,7 +444,7 @@ footer{margin-top:20px; font-size:12px; color:rgba(128,128,128,.5);}
 const W = 80, H = 25;
 const MAX_ITERATIONS = 50000000;
 const CHUNK_SIZE = 20000;
-const MAX_HISTORY = 20000;
+const MAX_HISTORY = 5000;
 
 // =====================================================================
 // УПРАВЛЯЮЩИЕ СИМВОЛЫ
@@ -472,33 +479,20 @@ function charToCode(ch){
   const cp=ch.codePointAt(0); return cp!==undefined?cp:0;
 }
 function codeToDisplayChar(code){
-  // code может быть BigInt или number — приводим к number
   let n;
-  try {
-    n = typeof code === 'bigint' ? Number(code) : Number(code);
-  } catch(e) {
-    return null;
-  }
+  try { n = typeof code === 'bigint' ? Number(code) : Number(code); }
+  catch(e) { return null; }
   if (!Number.isFinite(n)) return null;
-
-  if (customAsciiReverse !== null && customAsciiReverse[n] !== undefined)
-    return customAsciiReverse[n];
-
-  if (CONTROL_REVERSE[n] !== undefined)
-    return CONTROL_REVERSE[n];
-
+  if (customAsciiReverse !== null && customAsciiReverse[n] !== undefined) return customAsciiReverse[n];
+  if (CONTROL_REVERSE[n] !== undefined) return CONTROL_REVERSE[n];
   if (n >= 32 && n <= 0x10FFFF && !CONTROL_CODES.has(n)) {
-    try {
-      const ch = String.fromCodePoint(n);
-      if (ch) return ch;
-    } catch(e) {}
+    try { const ch = String.fromCodePoint(n); if (ch) return ch; } catch(e) {}
   }
   return null;
 }
 function codeToCharForOutput(code){
   let n = typeof code === 'bigint' ? Number(code) : Number(code);
   if (!Number.isFinite(n)) return null;
-
   if (customAsciiReverse !== null && customAsciiReverse[n] !== undefined) {
     const name = customAsciiReverse[n];
     const b = getControlBehavior(name);
@@ -509,10 +503,7 @@ function codeToCharForOutput(code){
     return b !== null ? b : '';
   }
   if (n >= 32 && n <= 0x10FFFF && !CONTROL_CODES.has(n)) {
-    try {
-      const ch = String.fromCodePoint(n);
-      if (ch) return ch;
-    } catch(e) {}
+    try { const ch = String.fromCodePoint(n); if (ch) return ch; } catch(e) {}
   }
   return null;
 }
@@ -651,6 +642,7 @@ const translations={
     pfTitle:"Playfield (80×25) — click a cell to edit code",
     inputTitle:"Input",
     inputHintInt:"Enter an integer (any length)",
+    inputHintChar:"Enter a character",
     inputOk:"✅ OK", inputCancel:"✖ Cancel",
     inputKeys:"Enter — confirm · Esc — cancel",
     inputDisplayEmpty:"_",
@@ -658,6 +650,7 @@ const translations={
       hello:"Hello World!", hello2:"Hello World! (simpler)",
       quine:"Befunge Quine", count:"Count 1..99",
       cat:"Cat program (& echo)", factorial:"Factorial (6!)",
+      len:"Length of Input"
     },
     hints:[
       {cmd:'0-9',desc:'Push number onto stack'},
@@ -707,6 +700,7 @@ const translations={
     pfTitle:"Игровое поле (80×25) — клик по клетке = редактировать код",
     inputTitle:"Ввод",
     inputHintInt:"Введите целое число (любой длины)",
+    inputHintChar:"Введите символ",
     inputOk:"✅ OK", inputCancel:"✖ Отмена",
     inputKeys:"Enter — подтвердить · Esc — отмена",
     inputDisplayEmpty:"_",
@@ -714,6 +708,7 @@ const translations={
       hello:"Привет, мир!", hello2:"Привет, мир! (проще)",
       quine:"Befunge квин", count:"Счёт 1..99",
       cat:"Эхо-программа (&)", factorial:"Факториал (6!)",
+      len:"Длина инпута"
     },
     hints:[
       {cmd:'0-9',desc:'Положить число в стек'},
@@ -790,6 +785,15 @@ function switchLanguage(lang){
   document.getElementById('optDivZero').innerText=divOpts[lang].zero;
   document.getElementById('optDivValue').innerText=divOpts[lang].value;
   document.getElementById('optDivStop').innerText=divOpts[lang].stop;
+
+  const tildeOpts={
+    en:{minus1:'~ on cancel: -1', zero:'~ on cancel: 0', space:'~ on cancel: 32 (space)', value:'~ on cancel: value…'},
+    ru:{minus1:'~ при отмене: -1', zero:'~ при отмене: 0', space:'~ при отмене: 32 (пробел)', value:'~ при отмене: своё…'}
+  };
+  document.getElementById('optTildeMinus1').innerText=tildeOpts[lang].minus1;
+  document.getElementById('optTildeZero').innerText=tildeOpts[lang].zero;
+  document.getElementById('optTildeSpace').innerText=tildeOpts[lang].space;
+  document.getElementById('optTildeValue').innerText=tildeOpts[lang].value;
 }
 function updateStatsLabels(){
   const t=translations[currentLang];
@@ -809,6 +813,8 @@ let stringMode=false;
 let directionMode='wrap';
 let divZeroMode='ask';
 let divZeroValue=0;
+let tildeMode='minus1';      // 'minus1' | 'zero' | 'space' | 'value'
+let tildeValue=-1n;          // BigInt, по умолчанию -1
 let isRunning=false,isPaused=false,isStopped=false;
 let timer=null,instantChunkTimer=null;
 let totalSteps=0;
@@ -817,9 +823,9 @@ let history=[];
 let currentCmdChar=' ';
 
 // Ввод
-let inputModalMode='char';     // 'char' | 'int'
-let inputModalValue='';        // текущее значение в модалке
-let pendingInputResolve=null;  // callback
+let inputModalMode='char';
+let inputModalValue='';
+let pendingInputResolve=null;
 let waitingForInput=false;
 
 function idx(x,y){return y*W+x;}
@@ -896,7 +902,7 @@ function updateDivZeroMode(){
         : 'What value to return on division by zero?',
       String(divZeroValue)
     );
-    if(raw===null){ // отмена — откатываемся на ask
+    if(raw===null){
       divZeroMode='ask';
       sel.value='ask';
     } else {
@@ -916,6 +922,48 @@ function loadDivZeroMode(){
     }
     const v=localStorage.getItem('bf_divZeroValue');
     if(v!==null){const n=parseInt(v,10);if(!isNaN(n))divZeroValue=n;}
+  }catch(e){}
+}
+
+function updateTildeMode(){
+  const sel=document.getElementById('tildeModeSelect');
+  tildeMode=sel.value;
+  if(tildeMode==='value'){
+    const raw=prompt(
+      currentLang==='ru'
+        ? 'Какое число класть в стек при отмене ввода ~?'
+        : 'What value to push on ~ cancel?',
+      String(tildeValue)
+    );
+    if(raw===null){
+      tildeMode='minus1';
+      sel.value='minus1';
+      tildeValue=-1n;
+    } else {
+      const n=parseInt(raw,10);
+      tildeValue=isNaN(n)?-1n:BigInt(n);
+    }
+  } else if(tildeMode==='minus1'){
+    tildeValue=-1n;
+  } else if(tildeMode==='zero'){
+    tildeValue=0n;
+  } else if(tildeMode==='space'){
+    tildeValue=32n;
+  }
+  try{localStorage.setItem('bf_tildeMode',tildeMode);}catch(e){}
+  try{localStorage.setItem('bf_tildeValue',String(tildeValue));}catch(e){}
+}
+function loadTildeMode(){
+  try{
+    const m=localStorage.getItem('bf_tildeMode');
+    if(m==='minus1'||m==='zero'||m==='space'||m==='value'){
+      tildeMode=m;
+      document.getElementById('tildeModeSelect').value=m;
+    }
+    const v=localStorage.getItem('bf_tildeValue');
+    if(v!==null){
+      try{tildeValue=BigInt(v);}catch(e){tildeValue=-1n;}
+    }
   }catch(e){}
 }
 
@@ -946,7 +994,6 @@ function openInputModal(mode){
     disp.innerText=t.inputDisplayEmpty;
     disp.style.color='#6c7086';
     ov.classList.add('open');
-    // фокус на кнопку OK, чтобы Enter работал
     setTimeout(()=>document.getElementById('inputModalOk').focus(),0);
   });
 }
@@ -1002,16 +1049,13 @@ function handleInputKey(e){
     e.preventDefault();
 
     if(inputModalMode === 'int'){
-      // Разрешаем минус только в начале числа
       if(e.key === '-' && inputModalValue === ''){
         inputModalValue = '-';
       }
-      // Добавляем цифры к уже введённому числу
       else if(/[0-9]/.test(e.key)){
         inputModalValue += e.key;
       }
     } else {
-      // Режим ввода одного символа (~)
       inputModalValue = e.key;
     }
 
@@ -1019,14 +1063,33 @@ function handleInputKey(e){
   }
 }
 
-
+// =====================================================================
+// ВОЗОБНОВЛЕНИЕ ПОСЛЕ ВВОДА
+// =====================================================================
+function resumeAfterInput(){
+  isPaused = false;
+  if(isRunning && !isStopped && !waitingForInput){
+    const sp = parseInt(document.getElementById('speed').value);
+    if(sp === 0){
+      executeInstantNoOpt();
+    } else {
+      clearInterval(timer);
+      const delay = Math.max(1, Math.round(1000 / sp));
+      timer = setInterval(() => {
+        if(!isPaused && isRunning && !waitingForInput){
+          executeStep(true);
+        }
+      }, delay);
+    }
+  }
+}
 
 // =====================================================================
 // ИСПОЛНЕНИЕ
 // =====================================================================
 function executeStep(updateUI_){
   if(isStopped||!isRunning)return false;
-  if(waitingForInput)return true; // пауза
+  if(waitingForInput)return true;
   if(totalSteps>=MAX_ITERATIONS){
     isStopped=true;isRunning=false;
     const badge=document.getElementById('execTimeBadge');
@@ -1039,7 +1102,7 @@ function executeStep(updateUI_){
 
   if(stringMode){
     if(cmd==='"'){stringMode=false;}
-    else{stackPush(cmd.charCodeAt(0));}
+    else{stackPush(cmd.codePointAt(0));}
     movePC();
     totalSteps++;
     if(updateUI_)updateUI();
@@ -1056,8 +1119,8 @@ function executeStep(updateUI_){
     case '/':{
       const a=stackPop(),b=stackPop();
       if(a===0n){
-        handleDivZero(b); // асинхронно при 'ask', синхронно иначе
-        return true;      // movePC/step делает handleDivZero
+        handleDivZero(b);
+        return true;
       }
       stackPush(Math.trunc(b/a));
       movePC();break;
@@ -1085,13 +1148,13 @@ function executeStep(updateUI_){
     case '\\':{const a=stackPop(),b=stackPop();stackPush(a);stackPush(b);movePC();break;}
     case '$':stackPop();movePC();break;
     case '.':{
-    const val=stackPop();
-    const outputEl=document.getElementById('output');
-    outputEl.value+=String(val)+' ';
-    outputHistoryCounter++;
-    outputHistory.push({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:String(val),type:'int'});
-    movePC();
-    break;
+      const val=stackPop();
+      const outputEl=document.getElementById('output');
+      outputEl.value+=String(val)+' ';
+      outputHistoryCounter++;
+      outputHistory.push({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:String(val),type:'int'});
+      movePC();
+      break;
     }
     case ',':{const val=stackPop();const outChar=codeToCharForOutput(Number(val));
       let written;
@@ -1108,68 +1171,36 @@ function executeStep(updateUI_){
     case 'g': {
       const y=stackPop(), x=stackPop();
       stackPush(
-        BigInt(getCell(normalizeX(Number(x)),normalizeY(Number(y))).charCodeAt(0))
+        BigInt(getCell(normalizeX(Number(x)),normalizeY(Number(y))).codePointAt(0) || 0)
       );
       movePC();
       break;
     }
-
     case 'p': {
       const y=stackPop(), x=stackPop(), v=stackPop();
       setCell(
         normalizeX(Number(x)),
         normalizeY(Number(y)),
-        String.fromCharCode(Number(v))
+        String.fromCodePoint(Number(v) || 32)
       );
       movePC();
       break;
     }
     case '&': {
       isPaused = true;
-
       clearInterval(timer);
-
-      if(instantChunkTimer){
-        clearTimeout(instantChunkTimer);
-        instantChunkTimer = null;
-      }
-
+      if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
       if(updateUI_) updateUI();
 
       openInputModal('int').then(val => {
         let num = 0n;
-
         if(val !== null && /^-?\d+$/.test(val.trim())){
-          try {
-            num = BigInt(val.trim());
-          } catch(e) {
-            num = 0n;
-          }
+          try { num = BigInt(val.trim()); } catch(e) { num = 0n; }
         }
-
         stackPush(num);
-
         movePC();
         totalSteps++;
-
-        isPaused = false;
-
-        if(isRunning && !isStopped){
-          const sp = parseInt(document.getElementById('speed').value);
-
-          if(sp === 0){
-            executeInstantNoOpt();
-          } else {
-            const delay = Math.max(1, Math.round(1000 / sp));
-
-            timer = setInterval(() => {
-              if(!isPaused && isRunning && !waitingForInput){
-                executeStep(true);
-              }
-            }, delay);
-          }
-        }
-
+        resumeAfterInput();
         if(updateUI_) updateUI();
       });
 
@@ -1181,20 +1212,15 @@ function executeStep(updateUI_){
       if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
       if(updateUI_)updateUI();
       openInputModal('char').then(val=>{
-        let code=0;
-        if(val!==null&&val!=='')code=charToCode(val);
-        stackPush(code);
-        movePC();
-        totalSteps++;            // только один раз
-        isPaused=false;
-        if(isRunning&&!isStopped){
-          const sp=parseInt(document.getElementById('speed').value);
-          if(sp===0){executeInstantNoOpt();}
-          else{
-            const delay=Math.max(1,Math.round(1000/sp));
-            timer=setInterval(()=>{if(!isPaused&&isRunning&&!waitingForInput)executeStep(true);},delay);
-          }
+        if(val===null || val===''){
+          // отмена или пустой ввод — пушим настроенное значение
+          stackPush(tildeValue);
+        } else {
+          stackPush(charToCode(val));
         }
+        movePC();
+        totalSteps++;
+        resumeAfterInput();
         if(updateUI_)updateUI();
       });
       return true;
@@ -1229,44 +1255,19 @@ function handleDivZero(numerator){
       updateUI(); return;
     case 'ask':
     default:{
-      // ставим на паузу и спрашиваем число
       isPaused=true;
       clearInterval(timer);
       if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
       updateUI();
       openInputModal('int').then(val => {
         let num = 0n;
-
         if(val !== null && /^-?\d+$/.test(val.trim())){
-          try {
-            num = BigInt(val.trim());
-          } catch(e) {
-            num = 0n;
-          }
+          try { num = BigInt(val.trim()); } catch(e) { num = 0n; }
         }
-
         stackPush(num);
         movePC();
         totalSteps++;
-
-        isPaused = false;
-
-        if(isRunning && !isStopped){
-          const sp = parseInt(document.getElementById('speed').value);
-
-          if(sp === 0){
-            executeInstantNoOpt();
-          } else {
-            const delay = Math.max(1, Math.round(1000 / sp));
-
-            timer = setInterval(() => {
-              if(!isPaused && isRunning && !waitingForInput){
-                executeStep(true);
-              }
-            }, delay);
-          }
-        }
-
+        resumeAfterInput();
         updateUI();
       });
       return;
@@ -1279,9 +1280,9 @@ function executeInstantNoOpt(){
   function chunk(){
     if(!isRunning||isPaused||isStopped||waitingForInput){instantChunkTimer=null;return;}
     for(let i=0;i<CHUNK_SIZE;i++){
+      if(waitingForInput){updateUI();instantChunkTimer=null;return;}
       if(!executeStep(false)){updateUI();instantChunkTimer=null;return;}
       if(totalSteps>=MAX_ITERATIONS)break;
-      if(waitingForInput){updateUI();instantChunkTimer=null;return;}
     }
     updateUI();
     if(!isRunning||isStopped||totalSteps>=MAX_ITERATIONS||waitingForInput){instantChunkTimer=null;return;}
@@ -1310,7 +1311,7 @@ function runCode(){
 }
 function waitCode(){isPaused=true;clearInterval(timer);if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}updateUI();}
 function continueCode(){
-  if(waitingForInput)return; // ждём ввода — нельзя продолжать
+  if(waitingForInput)return;
   isPaused=false;document.getElementById('execStatus').classList.remove('active');runCode();
 }
 function stopCode(){
@@ -1415,7 +1416,8 @@ function updateUI(){
   const dirMap={'1,0':'→','-1,0':'←','0,-1':'↑','0,1':'↓'};
   document.getElementById('posInfo').textContent=`x:${pcX} y:${pcY} dir:${dirMap[dx+','+dy]||'?'}`;
   document.getElementById('pfPos').textContent=`PC: (${pcX},${pcY})`;
-  document.getElementById('totalSteps').textContent=totalSteps;
+  const totalStepsEl=document.getElementById('totalSteps');
+  if(totalStepsEl)totalStepsEl.textContent=totalSteps;
   document.getElementById('cmdIndex').textContent=`(${pcX},${pcY})`;
   document.getElementById('cmdChar').textContent=currentCmdChar;
   updateCommandInfo();
@@ -1494,10 +1496,11 @@ function updateCodeHighlight(){
   const hl=document.getElementById('codeHighlight');
   const code=ta.value;
   let html='';
+  const pcIndex=getRawIndexForPC();
   for(let i=0;i<code.length;i++){
     let ch=code[i];
     let esc=ch==='&'?'&amp;':ch==='<'?'&lt;':ch==='>'?'&gt;':(ch===' '?'&nbsp;':ch);
-    if(i===getRawIndexForPC())html+='<span class="highlight-char">'+esc+'</span>';
+    if(i===pcIndex)html+='<span class="highlight-char">'+esc+'</span>';
     else html+=esc;
   }
   hl.innerHTML=html;
@@ -1509,7 +1512,9 @@ function getRawIndexForPC(){
   const raw=document.getElementById('code').value;
   for(let i=0;i<raw.length;i++){
     if(line===pcY&&col===pcX)return i;
-    if(raw[i]==='\n'){line++;col=0;}else col++;
+    if(raw[i]==='\n'){line++;col=0;}
+    else if(raw[i]==='\t'){col+=4 - (col%4);}
+    else col++;
   }
   return -1;
 }
@@ -1524,6 +1529,7 @@ const examples={
   count:{code:'1"d">1-:  #v_@\n    ^\\+1.:\\<',input:'',title:'Count 1..99'},
   cat:{code:'>~# :# 1# +# _$>:#,_@',input:'Hello Befunge!',title:'Cat program (~ echo)'},
   factorial:{code:'&:99p>1-:    #v_99g.@\n     ^p99*g99:<',input:'',title:'Factorial (6!)'},
+  len:{code:'>~# 1# +# #p #9 #9 #+ #1 #g #9 #9 _99g" "-.@',input:'Hello',title:'Length of input'}
 };
 function updateExamplesDropdown(){
   const sel=document.getElementById('exampleSelect');
@@ -1556,6 +1562,8 @@ function generateShareLink(){
     lang:currentLang,
     divZeroMode:divZeroMode,
     divZeroValue:divZeroValue,
+    tildeMode:tildeMode,
+    tildeValue:String(tildeValue),
   };
   try{
     const json=JSON.stringify(state);
@@ -1587,6 +1595,13 @@ function loadFromHash(){
       document.getElementById('divZeroModeSelect').value=divZeroMode;
     }
     if(typeof state.divZeroValue==='number')divZeroValue=state.divZeroValue;
+    if(state.tildeMode==='minus1'||state.tildeMode==='zero'||state.tildeMode==='space'||state.tildeMode==='value'){
+      tildeMode=state.tildeMode;
+      document.getElementById('tildeModeSelect').value=tildeMode;
+    }
+    if(state.tildeValue!==undefined){
+      try{tildeValue=BigInt(state.tildeValue);}catch(e){tildeValue=-1n;}
+    }
     document.getElementById('directionModeSelect').value=directionMode;
     document.getElementById('code').value=state.code||'';
     document.getElementById('output').value='';
@@ -1595,6 +1610,7 @@ function loadFromHash(){
     resetExecutionState();
     prepareCodeToPlayfield();
     updateUI();updateCodeHighlight();updateDirectionMode();
+    updateAsciiTableDisplay();
     return true;
   }catch(e){console.error('Failed to load state:',e);return false;}
 }
@@ -1612,6 +1628,7 @@ window.onload=function(){
     updateCodeHighlight();
   }
   loadDivZeroMode();
+  loadTildeMode();
   updateDirectionMode();
   updateStatsLabels();
   updateAsciiBadge();
