@@ -1529,7 +1529,8 @@ const examples={
   count:{code:'1"d">1-:  #v_@\n    ^\\+1.:\\<',input:'',title:'Count 1..99'},
   cat:{code:'>~# :# 1# +# _$>:#,_@',input:'Hello Befunge!',title:'Cat program (~ echo)'},
   factorial:{code:'&:99p>1-:    #v_99g.@\n     ^p99*g99:<',input:'',title:'Factorial (6!)'},
-  len:{code:'>~# 1# +# #p #9 #9 #+ #1 #g #9 #9 _99g" "-.@',input:'Hello',title:'Length of input'}
+  len:{code:'>~# 1# +# #p #9 #9 #+ #1 #g #9 #9 _99g" "-.@',input:'Hello',title:'Length of input'},
+  myquine:{code:'>:# 0# g# ,# 1# +# :# 6# 6# *# -# _@',input:'',title:'My Own Befunge Quine'}
 };
 function updateExamplesDropdown(){
   const sel=document.getElementById('exampleSelect');
