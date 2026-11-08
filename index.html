@@ -650,7 +650,8 @@ const translations={
       hello:"Hello World!", hello2:"Hello World! (simpler)",
       quine:"Befunge Quine", count:"Count 1..99",
       cat:"Cat program (& echo)", factorial:"Factorial (6!)",
-      len:"Length of Input",myquine:"My Befunge Quine"
+      len:"Length of Input",myquine:"My Befunge Quine",
+      dynquine:"Dynamic Befunge Quine"
     },
     hints:[
       {cmd:'0-9',desc:'Push number onto stack'},
@@ -706,9 +707,10 @@ const translations={
     inputDisplayEmpty:"_",
     examples:{
       hello:"Привет, мир!", hello2:"Привет, мир! (проще)",
-      quine:"Befunge куайн", count:"Счёт 1..99",
+      quine:"Befunge квайн", count:"Счёт 1..99",
       cat:"Эхо-программа (&)", factorial:"Факториал (6!)",
-      len:"Длина инпута",myquine:"Мой Befunge куайн"
+      len:"Длина инпута",myquine:"Мой Befunge квайн",
+      dynquine:"Динамичный Befunge квайн"
     },
     hints:[
       {cmd:'0-9',desc:'Положить число в стек'},
@@ -1530,7 +1532,8 @@ const examples={
   cat:{code:'>~# :# 1# +# _$>:#,_@',input:'Hello Befunge!',title:'Cat program (~ echo)'},
   factorial:{code:'&:99p>1-:    #v_99g.@\n     ^p99*g99:<',input:'',title:'Factorial (6!)'},
   len:{code:'>~# 1# +# #p #9 #9 #+ #1 #g #9 #9 _99g" "-.@',input:'Hello',title:'Length of input'},
-  myquine:{code:'>:# 0# g# ,# 1# +# :# 6# 6# *# -# _@',input:'',title:'My Own Befunge Quine'}
+  myquine:{code:'>:# 0# g# ,# 1# +# :# 6# 6# *# -# _@',input:'',title:'My Own Befunge Quine'},
+  dynquine:{code:'01->1# +# :# 0# g# :# ,# 8# 8# *# -# _@',input:'',title:'Dynamic Befunge Quine'}
 };
 function updateExamplesDropdown(){
   const sel=document.getElementById('exampleSelect');
