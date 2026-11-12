@@ -799,7 +799,7 @@ function switchLanguage(lang){
 }
 function updateStatsLabels(){
   const t=translations[currentLang];
-  document.getElementById('statSteps').innerHTML=t.statSteps+' <span class="num" id="totalSteps">'+totalSteps+'</span>';
+  document.getElementById('statSteps').innerHTML=t.statSteps+' <span class="num" id="totalSteps">'+(totalSteps + 1)+'</span>';
   const sp=parseInt(document.getElementById('speed').value);
   const spTxt=sp===0?'⚡ MAX':sp+' cmd/s';
   document.getElementById('statSpeed').innerHTML=t.statSpeed+' <span class="num" id="stepsPerTick">'+spTxt+'</span>';
