@@ -814,7 +814,8 @@ let pcX=0,pcY=0,dx=1,dy=0;
 let stringMode=false;
 let directionMode='wrap';
 let divZeroMode='ask';
-let divZeroValue=0;
+// FIX: divZeroValue храним как BigInt, чтобы не терять точность и не смешивать типы
+let divZeroValue=0n;
 let tildeMode='minus1';      // 'minus1' | 'zero' | 'space' | 'value'
 let tildeValue=-1n;          // BigInt, по умолчанию -1
 let isRunning=false,isPaused=false,isStopped=false;
@@ -909,7 +910,8 @@ function updateDivZeroMode(){
       sel.value='ask';
     } else {
       const n=parseInt(raw,10);
-      divZeroValue=isNaN(n)?0:n;
+      // FIX: храним как BigInt
+      divZeroValue=isNaN(n)?0n:BigInt(n);
     }
   }
   try{localStorage.setItem('bf_divZeroMode',divZeroMode);}catch(e){}
@@ -923,7 +925,9 @@ function loadDivZeroMode(){
       document.getElementById('divZeroModeSelect').value=m;
     }
     const v=localStorage.getItem('bf_divZeroValue');
-    if(v!==null){const n=parseInt(v,10);if(!isNaN(n))divZeroValue=n;}
+    if(v!==null){
+      try{divZeroValue=BigInt(v);}catch(e){divZeroValue=0n;}
+    }
   }catch(e){}
 }
 
@@ -976,6 +980,11 @@ function stackPush(v){
 function stackPop(){
   if(stack.length === 0) return 0n;
   return stack.pop();
+}
+
+// FIX: helper для проверки, что на стеке достаточно операндов
+function hasOperands(n){
+  return stack.length >= n;
 }
 
 // =====================================================================
@@ -1115,19 +1124,43 @@ function executeStep(updateUI_){
     case '0':case '1':case '2':case '3':case '4':
     case '5':case '6':case '7':case '8':case '9':
       stackPush(BigInt(cmd)); movePC(); break;
-    case '+':{const a=stackPop(),b=stackPop();stackPush(a+b);movePC();break;}
-    case '-':{const a=stackPop(),b=stackPop();stackPush(b-a);movePC();break;}
-    case '*':{const a=stackPop(),b=stackPop();stackPush(a*b);movePC();break;}
+
+    // FIX: для бинарных операций сначала проверяем наличие двух операндов.
+    // При нехватке — результат 0, как при pop пустого стека, и это НЕ деление на ноль.
+    case '+':{
+      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
+      const a=stackPop(),b=stackPop();stackPush(a+b);movePC();break;
+    }
+    case '-':{
+      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
+      const a=stackPop(),b=stackPop();stackPush(b-a);movePC();break;
+    }
+    case '*':{
+      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
+      const a=stackPop(),b=stackPop();stackPush(a*b);movePC();break;
+    }
     case '/':{
+      // FIX: если операндов меньше двух — это не деление на ноль, просто результат 0
+      if(!hasOperands(2)){
+        stackPop(); stackPop();
+        stackPush(0n);
+        movePC(); break;
+      }
       const a=stackPop(),b=stackPop();
       if(a===0n){
         handleDivZero(b);
         return true;
       }
-      stackPush(Math.trunc(b/a));
+      stackPush(b/a);
       movePC();break;
     }
     case '%':{
+      // FIX: аналогично '/'
+      if(!hasOperands(2)){
+        stackPop(); stackPop();
+        stackPush(0n);
+        movePC(); break;
+      }
       const a=stackPop(),b=stackPop();
       if(a===0n){
         handleDivZero(b);
@@ -1136,18 +1169,41 @@ function executeStep(updateUI_){
       stackPush(b%a);
       movePC();break;
     }
-    case '!':{const a=stackPop();stackPush(a===0n?1n:0n);movePC();break;}
-    case '`':{const a=stackPop(),b=stackPop();stackPush(b>a?1n:0n);movePC();break;}
+    case '!':{
+      // FIX: унарная — достаточно одного операнда, иначе 0 (pop пустого = 0)
+      if(!hasOperands(1)){ stackPop(); stackPush(0n); movePC(); break; }
+      const a=stackPop();stackPush(a===0n?1n:0n);movePC();break;
+    }
+    case '`':{
+      // FIX: бинарная
+      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
+      const a=stackPop(),b=stackPop();stackPush(b>a?1n:0n);movePC();break;
+    }
     case '>':dx=1;dy=0;movePC();break;
     case '<':dx=-1;dy=0;movePC();break;
     case '^':dx=0;dy=-1;movePC();break;
     case 'v':dx=0;dy=1;movePC();break;
     case '?':{const dirs=[[1,0],[-1,0],[0,-1],[0,1]];const d=dirs[Math.floor(Math.random()*4)];dx=d[0];dy=d[1];movePC();break;}
-    case '_':{const a=stackPop();if(a===0n){dx=1;dy=0;}else{dx=-1;dy=0;}movePC();break;}
-    case '|':{const a=stackPop();if(a===0n){dx=0;dy=1;}else{dx=0;dy=-1;}movePC();break;}
+    case '_':{
+      // FIX: унарная
+      if(!hasOperands(1)){ stackPop(); stackPush(0n); dx=1;dy=0; movePC(); break; }
+      const a=stackPop();if(a===0n){dx=1;dy=0;}else{dx=-1;dy=0;}movePC();break;
+    }
+    case '|':{
+      if(!hasOperands(1)){ stackPop(); stackPush(0n); dx=0;dy=1; movePC(); break; }
+      const a=stackPop();if(a===0n){dx=0;dy=1;}else{dx=0;dy=-1;}movePC();break;
+    }
     case '"':stringMode=true;movePC();break;
-    case ':':{const a=stack.length>0?stack[stack.length-1]:0;stackPush(a);movePC();break;}
-    case '\\':{const a=stackPop(),b=stackPop();stackPush(a);stackPush(b);movePC();break;}
+    case ':':{
+      // FIX: dup пустого стека даёт 0
+      const a=stack.length>0?stack[stack.length-1]:0n;
+      stackPush(a);movePC();break;
+    }
+    case '\\':{
+      // FIX: бинарная
+      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
+      const a=stackPop(),b=stackPop();stackPush(a);stackPush(b);movePC();break;
+    }
     case '$':stackPop();movePC();break;
     case '.':{
       const val=stackPop();
@@ -1171,6 +1227,8 @@ function executeStep(updateUI_){
       break;
     }
     case 'g': {
+      // FIX: бинарная (y,x)
+      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
       const y=stackPop(), x=stackPop();
       stackPush(
         BigInt(getCell(normalizeX(Number(x)),normalizeY(Number(y))).codePointAt(0) || 0)
@@ -1179,6 +1237,8 @@ function executeStep(updateUI_){
       break;
     }
     case 'p': {
+      // FIX: тернарная (y,x,v)
+      if(!hasOperands(3)){ stackPop(); stackPop(); stackPop(); movePC(); break; }
       const y=stackPop(), x=stackPop(), v=stackPop();
       setCell(
         normalizeX(Number(x)),
@@ -1215,7 +1275,6 @@ function executeStep(updateUI_){
       if(updateUI_)updateUI();
       openInputModal('char').then(val=>{
         if(val===null || val===''){
-          // отмена или пустой ввод — пушим настроенное значение
           stackPush(tildeValue);
         } else {
           stackPush(charToCode(val));
@@ -1247,7 +1306,7 @@ function movePC(){
 function handleDivZero(numerator){
   switch(divZeroMode){
     case 'zero':
-      stackPush(0); movePC(); totalSteps++; updateUI(); return;
+      stackPush(0n); movePC(); totalSteps++; updateUI(); return;
     case 'value':
       stackPush(divZeroValue); movePC(); totalSteps++; updateUI(); return;
     case 'stop':
@@ -1532,7 +1591,7 @@ const examples={
   cat:{code:'>~# :# 1# +# _$>:#,_@',input:'Hello Befunge!',title:'Cat program (~ echo)'},
   factorial:{code:'&:99p>1-:    #v_99g.@\n     ^p99*g99:<',input:'',title:'Factorial (6!)'},
   len:{code:'>~# 1# +# #p #9 #9 #+ #1 #g #9 #9 _99g" "-.@',input:'Hello',title:'Length of input'},
-  myquine:{code:'>:# 0# g# ,# 1# +# :# 6# 6# *# -# _@',input:'',title:'My Own Befunge Quine'},
+  myquine:{code:'>:# 0# g# ,# 1# +# :# #$" "-# _@',input:'',title:'My Own Befunge Quine'},
   dynquine:{code:'01->1# +# :# 0# g# :# ,# 8# 8# *# -# _@',input:'',title:'Dynamic Befunge Quine'}
 };
 function updateExamplesDropdown(){
@@ -1565,7 +1624,7 @@ function generateShareLink(){
     asciiRaw:customAsciiRawText,
     lang:currentLang,
     divZeroMode:divZeroMode,
-    divZeroValue:divZeroValue,
+    divZeroValue:String(divZeroValue),
     tildeMode:tildeMode,
     tildeValue:String(tildeValue),
   };
@@ -1598,7 +1657,9 @@ function loadFromHash(){
       divZeroMode=state.divZeroMode;
       document.getElementById('divZeroModeSelect').value=divZeroMode;
     }
-    if(typeof state.divZeroValue==='number')divZeroValue=state.divZeroValue;
+    if(state.divZeroValue!==undefined){
+      try{divZeroValue=BigInt(state.divZeroValue);}catch(e){divZeroValue=0n;}
+    }
     if(state.tildeMode==='minus1'||state.tildeMode==='zero'||state.tildeMode==='space'||state.tildeMode==='value'){
       tildeMode=state.tildeMode;
       document.getElementById('tildeModeSelect').value=tildeMode;
