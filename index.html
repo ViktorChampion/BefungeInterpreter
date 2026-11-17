@@ -445,6 +445,7 @@ const W = 80, H = 25;
 const MAX_ITERATIONS = 50000000;
 const CHUNK_SIZE = 20000;
 const MAX_HISTORY = 5000;
+const MAX_OUTPUT_HISTORY = 20000;
 
 // =====================================================================
 // УПРАВЛЯЮЩИЕ СИМВОЛЫ
@@ -675,7 +676,7 @@ const translations={
       {cmd:'#',desc:'Bridge: skip next cell'},
       {cmd:'g',desc:'Get: pop y,x → push playfield[y][x]'},
       {cmd:'p',desc:'Put: pop y,x,v → playfield[y][x]=v'},
-      {cmd:'&',desc:'Input one digit, push onto stack'},
+      {cmd:'&',desc:'Input integer, push onto stack'},
       {cmd:'~',desc:'Input one char, push ASCII onto stack'},
       {cmd:'@',desc:'End program'}
     ]
@@ -734,7 +735,7 @@ const translations={
       {cmd:'#',desc:'Мост: пропустить клетку'},
       {cmd:'g',desc:'Get: pop y,x → push field[y][x]'},
       {cmd:'p',desc:'Put: pop y,x,v → field[y][x]=v'},
-      {cmd:'&',desc:'Ввод одной цифры в стек'},
+      {cmd:'&',desc:'Ввод целого числа в стек'},
       {cmd:'~',desc:'Ввод одного символа (ASCII) в стек'},
       {cmd:'@',desc:'Конец программы'}
     ]
@@ -814,10 +815,9 @@ let pcX=0,pcY=0,dx=1,dy=0;
 let stringMode=false;
 let directionMode='wrap';
 let divZeroMode='ask';
-// FIX: divZeroValue храним как BigInt, чтобы не терять точность и не смешивать типы
 let divZeroValue=0n;
-let tildeMode='minus1';      // 'minus1' | 'zero' | 'space' | 'value'
-let tildeValue=-1n;          // BigInt, по умолчанию -1
+let tildeMode='minus1';
+let tildeValue=-1n;
 let isRunning=false,isPaused=false,isStopped=false;
 let timer=null,instantChunkTimer=null;
 let totalSteps=0;
@@ -846,6 +846,34 @@ function updatePosition(){
     if(pcX>=W){pcX=W-1;dx=-Math.abs(dx);}
     if(pcY<0){pcY=0;dy=Math.abs(dy);}
     if(pcY>=H){pcY=H-1;dy=-Math.abs(dy);}
+  }
+}
+
+// FIX #4: отдельная функция для bridge с корректным отражением в bounce
+function applyBridge(){
+  // Проверяем, не вылетим ли мы за границы при прыжке на 2 клетки
+  if(directionMode==='bounce'){
+    let nx = pcX + dx*2;
+    let ny = pcY + dy*2;
+    // Если за границей — отражаем направление и делаем прыжок с учётом отражения
+    if(nx<0 || nx>=W){
+      dx = -dx;
+      nx = pcX + dx; // после отражения идём на 1 клетку
+      // если всё равно за границей (стена вплотную) — остаёмся на месте
+      if(nx<0) nx=0;
+      if(nx>=W) nx=W-1;
+    }
+    if(ny<0 || ny>=H){
+      dy = -dy;
+      ny = pcY + dy;
+      if(ny<0) ny=0;
+      if(ny>=H) ny=H-1;
+    }
+    pcX = nx; pcY = ny;
+  } else {
+    pcX += dx*2;
+    pcY += dy*2;
+    updatePosition();
   }
 }
 
@@ -909,9 +937,9 @@ function updateDivZeroMode(){
       divZeroMode='ask';
       sel.value='ask';
     } else {
-      const n=parseInt(raw,10);
-      // FIX: храним как BigInt
-      divZeroValue=isNaN(n)?0n:BigInt(n);
+      // FIX #12: BigInt(raw) вместо parseInt для точности больших чисел
+      try { divZeroValue = BigInt(raw.trim()); }
+      catch(e) { divZeroValue = 0n; }
     }
   }
   try{localStorage.setItem('bf_divZeroMode',divZeroMode);}catch(e){}
@@ -946,8 +974,9 @@ function updateTildeMode(){
       sel.value='minus1';
       tildeValue=-1n;
     } else {
-      const n=parseInt(raw,10);
-      tildeValue=isNaN(n)?-1n:BigInt(n);
+      // FIX #12: BigInt(raw)
+      try { tildeValue = BigInt(raw.trim()); }
+      catch(e) { tildeValue = -1n; }
     }
   } else if(tildeMode==='minus1'){
     tildeValue=-1n;
@@ -982,9 +1011,14 @@ function stackPop(){
   return stack.pop();
 }
 
-// FIX: helper для проверки, что на стеке достаточно операндов
 function hasOperands(n){
   return stack.length >= n;
+}
+
+// FIX #11: лимит для outputHistory
+function pushOutputHistory(entry){
+  outputHistory.push(entry);
+  if(outputHistory.length > MAX_OUTPUT_HISTORY) outputHistory.shift();
 }
 
 // =====================================================================
@@ -1109,6 +1143,7 @@ function executeStep(updateUI_){
   }
   const cmd=getCell(pcX,pcY);
   currentCmdChar=cmd;
+  // FIX #10: сохраняем историю ДО обновления currentCmdChar для корректного stepBackward
   if(updateUI_)saveHistory();
 
   if(stringMode){
@@ -1125,8 +1160,6 @@ function executeStep(updateUI_){
     case '5':case '6':case '7':case '8':case '9':
       stackPush(BigInt(cmd)); movePC(); break;
 
-    // FIX: для бинарных операций сначала проверяем наличие двух операндов.
-    // При нехватке — результат 0, как при pop пустого стека, и это НЕ деление на ноль.
     case '+':{
       if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
       const a=stackPop(),b=stackPop();stackPush(a+b);movePC();break;
@@ -1140,7 +1173,6 @@ function executeStep(updateUI_){
       const a=stackPop(),b=stackPop();stackPush(a*b);movePC();break;
     }
     case '/':{
-      // FIX: если операндов меньше двух — это не деление на ноль, просто результат 0
       if(!hasOperands(2)){
         stackPop(); stackPop();
         stackPush(0n);
@@ -1155,7 +1187,6 @@ function executeStep(updateUI_){
       movePC();break;
     }
     case '%':{
-      // FIX: аналогично '/'
       if(!hasOperands(2)){
         stackPop(); stackPop();
         stackPush(0n);
@@ -1170,12 +1201,10 @@ function executeStep(updateUI_){
       movePC();break;
     }
     case '!':{
-      // FIX: унарная — достаточно одного операнда, иначе 0 (pop пустого = 0)
       if(!hasOperands(1)){ stackPop(); stackPush(0n); movePC(); break; }
       const a=stackPop();stackPush(a===0n?1n:0n);movePC();break;
     }
     case '`':{
-      // FIX: бинарная
       if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
       const a=stackPop(),b=stackPop();stackPush(b>a?1n:0n);movePC();break;
     }
@@ -1185,7 +1214,6 @@ function executeStep(updateUI_){
     case 'v':dx=0;dy=1;movePC();break;
     case '?':{const dirs=[[1,0],[-1,0],[0,-1],[0,1]];const d=dirs[Math.floor(Math.random()*4)];dx=d[0];dy=d[1];movePC();break;}
     case '_':{
-      // FIX: унарная
       if(!hasOperands(1)){ stackPop(); stackPush(0n); dx=1;dy=0; movePC(); break; }
       const a=stackPop();if(a===0n){dx=1;dy=0;}else{dx=-1;dy=0;}movePC();break;
     }
@@ -1195,12 +1223,10 @@ function executeStep(updateUI_){
     }
     case '"':stringMode=true;movePC();break;
     case ':':{
-      // FIX: dup пустого стека даёт 0
       const a=stack.length>0?stack[stack.length-1]:0n;
       stackPush(a);movePC();break;
     }
     case '\\':{
-      // FIX: бинарная
       if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
       const a=stackPop(),b=stackPop();stackPush(a);stackPush(b);movePC();break;
     }
@@ -1210,7 +1236,7 @@ function executeStep(updateUI_){
       const outputEl=document.getElementById('output');
       outputEl.value+=String(val)+' ';
       outputHistoryCounter++;
-      outputHistory.push({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:String(val),type:'int'});
+      pushOutputHistory({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:String(val),type:'int'});
       movePC();
       break;
     }
@@ -1218,16 +1244,11 @@ function executeStep(updateUI_){
       let written;
       if(outChar!==null){document.getElementById('output').value+=outChar;written=outChar;}
       else{document.getElementById('output').value+='['+val+']';written='['+val+']';}
-      outputHistoryCounter++;outputHistory.push({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:written,type:'char'});
+      outputHistoryCounter++;pushOutputHistory({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:written,type:'char'});
       movePC();break;}
-    case '#':{
-      pcX += dx*2;
-      pcY += dy*2;
-      updatePosition();
-      break;
-    }
+    // FIX #4: используем applyBridge() для корректного отражения
+    case '#':{ applyBridge(); break; }
     case 'g': {
-      // FIX: бинарная (y,x)
       if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
       const y=stackPop(), x=stackPop();
       stackPush(
@@ -1237,14 +1258,15 @@ function executeStep(updateUI_){
       break;
     }
     case 'p': {
-      // FIX: тернарная (y,x,v)
       if(!hasOperands(3)){ stackPop(); stackPop(); stackPop(); movePC(); break; }
       const y=stackPop(), x=stackPop(), v=stackPop();
-      setCell(
-        normalizeX(Number(x)),
-        normalizeY(Number(y)),
-        String.fromCodePoint(Number(v) || 32)
-      );
+      // FIX #3: корректная запись 0 (NUL) вместо пробела
+      let codeNum = Number(v);
+      if (!Number.isFinite(codeNum) || codeNum < 0) codeNum = 32;
+      let ch;
+      try { ch = String.fromCodePoint(codeNum); } catch(e) { ch = ' '; }
+      if (!ch) ch = ' ';
+      setCell(normalizeX(Number(x)), normalizeY(Number(y)), ch);
       movePC();
       break;
     }
@@ -1257,6 +1279,7 @@ function executeStep(updateUI_){
       openInputModal('int').then(val => {
         let num = 0n;
         if(val !== null && /^-?\d+$/.test(val.trim())){
+          // FIX #12: BigInt(raw) вместо parseInt
           try { num = BigInt(val.trim()); } catch(e) { num = 0n; }
         }
         stackPush(num);
@@ -1323,6 +1346,7 @@ function handleDivZero(numerator){
       openInputModal('int').then(val => {
         let num = 0n;
         if(val !== null && /^-?\d+$/.test(val.trim())){
+          // FIX #12: BigInt(raw)
           try { num = BigInt(val.trim()); } catch(e) { num = 0n; }
         }
         stackPush(num);
@@ -1404,6 +1428,8 @@ function stepBackward(){
   document.getElementById('output').value=s.output;
   outputHistory=s.outputHistory.slice();
   outputHistoryCounter=s.outputHistoryCounter;
+  // FIX #10: восстанавливаем currentCmdChar
+  currentCmdChar=s.currentCmdChar;
   isRunning=true;
   updateUI();
 }
@@ -1412,7 +1438,8 @@ function saveHistory(){
     playfield:playfield.slice(), stack:stack.slice(),
     pcX,pcY,dx,dy,stringMode,totalSteps,
     output:document.getElementById('output').value,
-    outputHistory:outputHistory.slice(), outputHistoryCounter
+    outputHistory:outputHistory.slice(), outputHistoryCounter,
+    currentCmdChar: currentCmdChar
   });
   if(history.length>MAX_HISTORY)history.shift();
 }
@@ -1564,6 +1591,10 @@ function updateCodeHighlight(){
     if(i===pcIndex)html+='<span class="highlight-char">'+esc+'</span>';
     else html+=esc;
   }
+  // FIX #7: если PC на пустой клетке за пределами текста — добавим маркер в конце
+  if(isRunning && pcIndex===-1){
+    html+='<span class="highlight-char">·</span>';
+  }
   hl.innerHTML=html;
   hl.scrollTop=ta.scrollTop;hl.scrollLeft=ta.scrollLeft;
 }
@@ -1647,12 +1678,14 @@ function loadFromHash(){
     const encoded=hash.substring(4);
     const json=decodeURIComponent(escape(atob(encoded)));
     const state=JSON.parse(json);
+    // FIX #8: если asciiRaw есть, но невалиден — сбрасываем, а не оставляем старую
+    customAsciiMap=null;customAsciiReverse=null;customAsciiRawText=null;
     if(state.asciiRaw){
       const parsed=parseAsciiTable(state.asciiRaw);
       if(Object.keys(parsed.map).length>0){
         customAsciiMap=parsed.map;customAsciiReverse=buildReverseMap(parsed.map);customAsciiRawText=state.asciiRaw;
       }
-    } else {customAsciiMap=null;customAsciiReverse=null;customAsciiRawText=null;}
+    }
     directionMode=state.dirMode||'wrap';
     if(state.divZeroMode==='ask'||state.divZeroMode==='zero'||state.divZeroMode==='value'||state.divZeroMode==='stop'){
       divZeroMode=state.divZeroMode;
