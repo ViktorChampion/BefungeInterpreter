@@ -656,9 +656,9 @@ const translations={
     },
     hints:[
       {cmd:'0-9',desc:'Push number onto stack'},
-      {cmd:'+',desc:'Add: pop a,b → push b+a'},
-      {cmd:'-',desc:'Subtract: pop a,b → push b-a'},
-      {cmd:'*',desc:'Multiply: pop a,b → push b*a'},
+      {cmd:'+',desc:'Add: pop a,b → push b+a (missing = 0)'},
+      {cmd:'-',desc:'Subtract: pop a,b → push b-a (missing = 0)'},
+      {cmd:'*',desc:'Multiply: pop a,b → push b*a (missing = 0)'},
       {cmd:'/',desc:'Divide: pop a,b → push b/a (int)'},
       {cmd:'%',desc:'Modulo: pop a,b → push b%a'},
       {cmd:'!',desc:'Logical NOT: 0→1, else 0'},
@@ -668,14 +668,14 @@ const translations={
       {cmd:'_',desc:'Horizontal if: pop, right if 0 else left'},
       {cmd:'|',desc:'Vertical if: pop, down if 0 else up'},
       {cmd:'"',desc:'String mode: push ASCII codes until next "'},
-      {cmd:':',desc:'Duplicate top of stack'},
-      {cmd:'\\',desc:'Swap top two stack values'},
+      {cmd:':',desc:'Duplicate top of stack (empty → 0)'},
+      {cmd:'\\',desc:'Swap top two stack values (missing = 0)'},
       {cmd:'$',desc:'Discard top of stack'},
       {cmd:'.',desc:'Pop and output as integer'},
       {cmd:',',desc:'Pop and output as ASCII char'},
       {cmd:'#',desc:'Bridge: skip next cell'},
-      {cmd:'g',desc:'Get: pop y,x → push playfield[y][x]'},
-      {cmd:'p',desc:'Put: pop y,x,v → playfield[y][x]=v'},
+      {cmd:'g',desc:'Get: pop y,x → push playfield[y][x] (missing = 0)'},
+      {cmd:'p',desc:'Put: pop y,x,v → playfield[y][x]=v (missing = 0)'},
       {cmd:'&',desc:'Input integer, push onto stack'},
       {cmd:'~',desc:'Input one char, push ASCII onto stack'},
       {cmd:'@',desc:'End program'}
@@ -715,9 +715,9 @@ const translations={
     },
     hints:[
       {cmd:'0-9',desc:'Положить число в стек'},
-      {cmd:'+',desc:'Сложение: pop a,b → push b+a'},
-      {cmd:'-',desc:'Вычитание: pop a,b → push b-a'},
-      {cmd:'*',desc:'Умножение: pop a,b → push b*a'},
+      {cmd:'+',desc:'Сложение: pop a,b → push b+a (нет = 0)'},
+      {cmd:'-',desc:'Вычитание: pop a,b → push b-a (нет = 0)'},
+      {cmd:'*',desc:'Умножение: pop a,b → push b*a (нет = 0)'},
       {cmd:'/',desc:'Деление: pop a,b → push b/a (целое)'},
       {cmd:'%',desc:'Остаток: pop a,b → push b%a'},
       {cmd:'!',desc:'Логическое НЕ: 0→1, иначе 0'},
@@ -727,14 +727,14 @@ const translations={
       {cmd:'_',desc:'Горизонтальное если: 0→вправо, иначе влево'},
       {cmd:'|',desc:'Вертикальное если: 0→вниз, иначе вверх'},
       {cmd:'"',desc:'Строковый режим: коды до следующей "'},
-      {cmd:':',desc:'Дублировать вершину стека'},
-      {cmd:'\\',desc:'Поменять два верхних значения'},
+      {cmd:':',desc:'Дублировать вершину стека (пусто → 0)'},
+      {cmd:'\\',desc:'Поменять два верхних значения (нет = 0)'},
       {cmd:'$',desc:'Сбросить вершину стека'},
       {cmd:'.',desc:'Вывести число (pop)'},
       {cmd:',',desc:'Вывести ASCII-символ (pop)'},
       {cmd:'#',desc:'Мост: пропустить клетку'},
-      {cmd:'g',desc:'Get: pop y,x → push field[y][x]'},
-      {cmd:'p',desc:'Put: pop y,x,v → field[y][x]=v'},
+      {cmd:'g',desc:'Get: pop y,x → push field[y][x] (нет = 0)'},
+      {cmd:'p',desc:'Put: pop y,x,v → field[y][x]=v (нет = 0)'},
       {cmd:'&',desc:'Ввод целого числа в стек'},
       {cmd:'~',desc:'Ввод одного символа (ASCII) в стек'},
       {cmd:'@',desc:'Конец программы'}
@@ -849,17 +849,13 @@ function updatePosition(){
   }
 }
 
-// FIX #4: отдельная функция для bridge с корректным отражением в bounce
 function applyBridge(){
-  // Проверяем, не вылетим ли мы за границы при прыжке на 2 клетки
   if(directionMode==='bounce'){
     let nx = pcX + dx*2;
     let ny = pcY + dy*2;
-    // Если за границей — отражаем направление и делаем прыжок с учётом отражения
     if(nx<0 || nx>=W){
       dx = -dx;
-      nx = pcX + dx; // после отражения идём на 1 клетку
-      // если всё равно за границей (стена вплотную) — остаёмся на месте
+      nx = pcX + dx;
       if(nx<0) nx=0;
       if(nx>=W) nx=W-1;
     }
@@ -937,7 +933,6 @@ function updateDivZeroMode(){
       divZeroMode='ask';
       sel.value='ask';
     } else {
-      // FIX #12: BigInt(raw) вместо parseInt для точности больших чисел
       try { divZeroValue = BigInt(raw.trim()); }
       catch(e) { divZeroValue = 0n; }
     }
@@ -974,7 +969,6 @@ function updateTildeMode(){
       sel.value='minus1';
       tildeValue=-1n;
     } else {
-      // FIX #12: BigInt(raw)
       try { tildeValue = BigInt(raw.trim()); }
       catch(e) { tildeValue = -1n; }
     }
@@ -1006,16 +1000,18 @@ function stackPush(v){
   stack.push(typeof v === 'bigint' ? v : BigInt(v));
 }
 
+// Возвращает верхний элемент или 0n, НЕ меняя стек, если он пуст
+function stackPopOrZero(){
+  if(stack.length === 0) return 0n;
+  return stack.pop();
+}
+
+// Возвращает 0n (без изменения стека), если пуст
 function stackPop(){
   if(stack.length === 0) return 0n;
   return stack.pop();
 }
 
-function hasOperands(n){
-  return stack.length >= n;
-}
-
-// FIX #11: лимит для outputHistory
 function pushOutputHistory(entry){
   outputHistory.push(entry);
   if(outputHistory.length > MAX_OUTPUT_HISTORY) outputHistory.shift();
@@ -1143,7 +1139,6 @@ function executeStep(updateUI_){
   }
   const cmd=getCell(pcX,pcY);
   currentCmdChar=cmd;
-  // FIX #10: сохраняем историю ДО обновления currentCmdChar для корректного stepBackward
   if(updateUI_)saveHistory();
 
   if(stringMode){
@@ -1160,76 +1155,36 @@ function executeStep(updateUI_){
     case '5':case '6':case '7':case '8':case '9':
       stackPush(BigInt(cmd)); movePC(); break;
 
-    case '+':{
-      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
-      const a=stackPop(),b=stackPop();stackPush(a+b);movePC();break;
-    }
-    case '-':{
-      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
-      const a=stackPop(),b=stackPop();stackPush(b-a);movePC();break;
-    }
-    case '*':{
-      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
-      const a=stackPop(),b=stackPop();stackPush(a*b);movePC();break;
-    }
+    // Бинарные и унарные операции: недостающие операнды = 0 (стек не трогаем)
+    case '+':{ const a=stackPopOrZero(), b=stackPopOrZero(); stackPush(a+b); movePC(); break; }
+    case '-':{ const a=stackPopOrZero(), b=stackPopOrZero(); stackPush(b-a); movePC(); break; }
+    case '*':{ const a=stackPopOrZero(), b=stackPopOrZero(); stackPush(a*b); movePC(); break; }
     case '/':{
-      if(!hasOperands(2)){
-        stackPop(); stackPop();
-        stackPush(0n);
-        movePC(); break;
-      }
-      const a=stackPop(),b=stackPop();
-      if(a===0n){
-        handleDivZero(b);
-        return true;
-      }
-      stackPush(b/a);
-      movePC();break;
+      const a=stackPopOrZero(), b=stackPopOrZero();
+      if(a===0n){ handleDivZero(b); return true; }
+      stackPush(b/a); movePC(); break;
     }
     case '%':{
-      if(!hasOperands(2)){
-        stackPop(); stackPop();
-        stackPush(0n);
-        movePC(); break;
-      }
-      const a=stackPop(),b=stackPop();
-      if(a===0n){
-        handleDivZero(b);
-        return true;
-      }
-      stackPush(b%a);
-      movePC();break;
+      const a=stackPopOrZero(), b=stackPopOrZero();
+      if(a===0n){ handleDivZero(b); return true; }
+      stackPush(b%a); movePC(); break;
     }
-    case '!':{
-      if(!hasOperands(1)){ stackPop(); stackPush(0n); movePC(); break; }
-      const a=stackPop();stackPush(a===0n?1n:0n);movePC();break;
-    }
-    case '`':{
-      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
-      const a=stackPop(),b=stackPop();stackPush(b>a?1n:0n);movePC();break;
-    }
+    case '!':{ const a=stackPopOrZero(); stackPush(a===0n?1n:0n); movePC(); break; }
+    case '`':{ const a=stackPopOrZero(), b=stackPopOrZero(); stackPush(b>a?1n:0n); movePC(); break; }
     case '>':dx=1;dy=0;movePC();break;
     case '<':dx=-1;dy=0;movePC();break;
     case '^':dx=0;dy=-1;movePC();break;
     case 'v':dx=0;dy=1;movePC();break;
     case '?':{const dirs=[[1,0],[-1,0],[0,-1],[0,1]];const d=dirs[Math.floor(Math.random()*4)];dx=d[0];dy=d[1];movePC();break;}
-    case '_':{
-      if(!hasOperands(1)){ stackPop(); stackPush(0n); dx=1;dy=0; movePC(); break; }
-      const a=stackPop();if(a===0n){dx=1;dy=0;}else{dx=-1;dy=0;}movePC();break;
-    }
-    case '|':{
-      if(!hasOperands(1)){ stackPop(); stackPush(0n); dx=0;dy=1; movePC(); break; }
-      const a=stackPop();if(a===0n){dx=0;dy=1;}else{dx=0;dy=-1;}movePC();break;
-    }
+    case '_':{ const a=stackPopOrZero(); dx=(a===0n)?1:-1; dy=0; movePC(); break; }
+    case '|':{ const a=stackPopOrZero(); dx=0; dy=(a===0n)?1:-1; movePC(); break; }
     case '"':stringMode=true;movePC();break;
     case ':':{
+      // dup пустого стека → 0 (не меняя стек, если пуст — просто пушим 0)
       const a=stack.length>0?stack[stack.length-1]:0n;
       stackPush(a);movePC();break;
     }
-    case '\\':{
-      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
-      const a=stackPop(),b=stackPop();stackPush(a);stackPush(b);movePC();break;
-    }
+    case '\\':{ const a=stackPopOrZero(), b=stackPopOrZero(); stackPush(a); stackPush(b); movePC(); break; }
     case '$':stackPop();movePC();break;
     case '.':{
       const val=stackPop();
@@ -1246,11 +1201,9 @@ function executeStep(updateUI_){
       else{document.getElementById('output').value+='['+val+']';written='['+val+']';}
       outputHistoryCounter++;pushOutputHistory({n:outputHistoryCounter,x:pcX,y:pcY,val:val,char:written,type:'char'});
       movePC();break;}
-    // FIX #4: используем applyBridge() для корректного отражения
     case '#':{ applyBridge(); break; }
     case 'g': {
-      if(!hasOperands(2)){ stackPop(); stackPop(); stackPush(0n); movePC(); break; }
-      const y=stackPop(), x=stackPop();
+      const y=stackPopOrZero(), x=stackPopOrZero();
       stackPush(
         BigInt(getCell(normalizeX(Number(x)),normalizeY(Number(y))).codePointAt(0) || 0)
       );
@@ -1258,9 +1211,9 @@ function executeStep(updateUI_){
       break;
     }
     case 'p': {
-      if(!hasOperands(3)){ stackPop(); stackPop(); stackPop(); movePC(); break; }
-      const y=stackPop(), x=stackPop(), v=stackPop();
-      // FIX #3: корректная запись 0 (NUL) вместо пробела
+      const y=stackPopOrZero(), x=stackPopOrZero(), v=stackPopOrZero();
+      // v = 0 (или пустой стек) → пишем NUL в (0,0)
+      // fallback на пробел — только для невалидных кодов (отрицательные, > 0x10FFFF, NaN)
       let codeNum = Number(v);
       if (!Number.isFinite(codeNum) || codeNum < 0) codeNum = 32;
       let ch;
@@ -1279,7 +1232,6 @@ function executeStep(updateUI_){
       openInputModal('int').then(val => {
         let num = 0n;
         if(val !== null && /^-?\d+$/.test(val.trim())){
-          // FIX #12: BigInt(raw) вместо parseInt
           try { num = BigInt(val.trim()); } catch(e) { num = 0n; }
         }
         stackPush(num);
@@ -1346,7 +1298,6 @@ function handleDivZero(numerator){
       openInputModal('int').then(val => {
         let num = 0n;
         if(val !== null && /^-?\d+$/.test(val.trim())){
-          // FIX #12: BigInt(raw)
           try { num = BigInt(val.trim()); } catch(e) { num = 0n; }
         }
         stackPush(num);
@@ -1428,7 +1379,6 @@ function stepBackward(){
   document.getElementById('output').value=s.output;
   outputHistory=s.outputHistory.slice();
   outputHistoryCounter=s.outputHistoryCounter;
-  // FIX #10: восстанавливаем currentCmdChar
   currentCmdChar=s.currentCmdChar;
   isRunning=true;
   updateUI();
@@ -1591,7 +1541,6 @@ function updateCodeHighlight(){
     if(i===pcIndex)html+='<span class="highlight-char">'+esc+'</span>';
     else html+=esc;
   }
-  // FIX #7: если PC на пустой клетке за пределами текста — добавим маркер в конце
   if(isRunning && pcIndex===-1){
     html+='<span class="highlight-char">·</span>';
   }
@@ -1678,7 +1627,6 @@ function loadFromHash(){
     const encoded=hash.substring(4);
     const json=decodeURIComponent(escape(atob(encoded)));
     const state=JSON.parse(json);
-    // FIX #8: если asciiRaw есть, но невалиден — сбрасываем, а не оставляем старую
     customAsciiMap=null;customAsciiReverse=null;customAsciiRawText=null;
     if(state.asciiRaw){
       const parsed=parseAsciiTable(state.asciiRaw);
