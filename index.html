@@ -79,6 +79,17 @@ select.mode-select{
   padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer; outline:none;
 }
 
+.size-control{
+  display:flex; align-items:center; gap:8px; background:#181825;
+  padding:5px 15px; border-radius:6px; border:1px solid var(--border-color);
+}
+.size-control input[type=number]{
+  background:var(--panel-bg); color:var(--text-color); border:1px solid var(--border-color);
+  border-radius:4px; padding:4px 6px; font-family:monospace; font-size:13px; outline:none;
+}
+.size-control input[type=number]:focus{border-color:var(--accent-color);}
+.size-control label{font-size:13px; font-weight:bold;}
+
 .stats{
   display:flex; gap:20px; font-size:13px; color:#6c7086; padding:5px 10px;
   background:#181825; border-radius:6px; border:1px solid var(--border-color);
@@ -321,6 +332,14 @@ footer{margin-top:20px; font-size:12px; color:rgba(128,128,128,.5);}
       <span class="speed-label" id="speedVal">20</span>
     </div>
 
+    <div class="size-control">
+      <label id="labelSizeW">W:</label>
+      <input type="number" id="sizeW" min="0" value="80" onchange="updateFieldSize()">
+      <label id="labelSizeH">H:</label>
+      <input type="number" id="sizeH" min="0" value="25" onchange="updateFieldSize()">
+      <span style="font-size:11px; color:#6c7086;" id="sizeHint">0 = ∞</span>
+    </div>
+
     <select id="divZeroModeSelect" class="mode-select" onchange="updateDivZeroMode()">
       <option value="ask" id="optDivAsk">Division by 0: Ask input</option>
       <option value="zero" id="optDivZero">Division by 0: Return 0</option>
@@ -441,7 +460,10 @@ footer{margin-top:20px; font-size:12px; color:rgba(128,128,128,.5);}
 // =====================================================================
 // КОНСТАНТЫ
 // =====================================================================
-const W = 80, H = 25;
+let W = 80, H = 25;                           // текущий размер поля
+const DEFAULT_W = 80, DEFAULT_H = 25;
+const INF = 1000000;                          // маркер «бесконечности»
+const MAX_RENDER_W = 80, MAX_RENDER_H = 25;   // окно рендера вокруг PC
 const MAX_ITERATIONS = 50000000;
 const CHUNK_SIZE = 20000;
 const MAX_HISTORY = 5000;
@@ -770,7 +792,10 @@ function switchLanguage(lang){
   document.getElementById('btnApplyAscii').innerText=t.btnApplyAscii;
   document.getElementById('btnResetAscii').innerText=t.btnResetAscii;
   document.getElementById('btnCloseAscii').innerText=t.btnCloseAscii;
-  document.getElementById('pfTitle').innerText=t.pfTitle;
+  updatePlayfieldTitle();
+  document.getElementById('labelSizeW').innerText='W:';
+  document.getElementById('labelSizeH').innerText='H:';
+  document.getElementById('sizeHint').innerText='0 = ∞';
   document.getElementById('inputModalTitle').innerText=t.inputTitle;
   document.getElementById('inputModalHint').innerText = inputModalMode==='int'?t.inputHintInt:t.inputHintChar;
   document.getElementById('inputModalKeys').innerText=t.inputKeys;
@@ -809,7 +834,8 @@ function updateStatsLabels(){
 // =====================================================================
 // ОСНОВНАЯ ЛОГИКА BEFUNGE
 // =====================================================================
-let playfield=new Array(W*H).fill(' ');
+// playfield теперь разреженный: Map<"x,y", char>. Отсутствующая клетка = ' '.
+let playfield=new Map();
 let stack=[];
 let pcX=0,pcY=0,dx=1,dy=0;
 let stringMode=false;
@@ -831,21 +857,37 @@ let inputModalValue='';
 let pendingInputResolve=null;
 let waitingForInput=false;
 
-function idx(x,y){return y*W+x;}
-function getCell(x,y){return playfield[idx(x,y)];}
-function setCell(x,y,v){playfield[idx(x,y)]=v;}
+function cellKey(x,y){return x+','+y;}
+function getCell(x,y){const v=playfield.get(cellKey(x,y));return v===undefined?' ':v;}
+function setCell(x,y,v){
+  if(v===' '||v===undefined)playfield.delete(cellKey(x,y));
+  else playfield.set(cellKey(x,y),v);
+}
 
-function normalizeX(x){return ((x%W)+W)%W;}
-function normalizeY(y){return ((y%H)+H)%H;}
+function normalizeX(x){
+  if(W>=INF)return x;                 // бесконечность по X — без нормализации
+  return ((x%W)+W)%W;
+}
+function normalizeY(y){
+  if(H>=INF)return y;
+  return ((y%H)+H)%H;
+}
 
 function updatePosition(){
   if(directionMode==='wrap'){
-    pcX=normalizeX(pcX); pcY=normalizeY(pcY);
+    // при бесконечности оставляем как есть (некуда заворачивать)
+    if(W<INF)pcX=normalizeX(pcX);
+    if(H<INF)pcY=normalizeY(pcY);
   } else {
-    if(pcX<0){pcX=0;dx=Math.abs(dx);}
-    if(pcX>=W){pcX=W-1;dx=-Math.abs(dx);}
-    if(pcY<0){pcY=0;dy=Math.abs(dy);}
-    if(pcY>=H){pcY=H-1;dy=-Math.abs(dy);}
+    // bounce
+    if(W<INF){
+      if(pcX<0){pcX=0;dx=Math.abs(dx);}
+      if(pcX>=W){pcX=W-1;dx=-Math.abs(dx);}
+    }
+    if(H<INF){
+      if(pcY<0){pcY=0;dy=Math.abs(dy);}
+      if(pcY>=H){pcY=H-1;dy=-Math.abs(dy);}
+    }
   }
 }
 
@@ -853,13 +895,13 @@ function applyBridge(){
   if(directionMode==='bounce'){
     let nx = pcX + dx*2;
     let ny = pcY + dy*2;
-    if(nx<0 || nx>=W){
+    if(W<INF && (nx<0 || nx>=W)){
       dx = -dx;
       nx = pcX + dx;
       if(nx<0) nx=0;
       if(nx>=W) nx=W-1;
     }
-    if(ny<0 || ny>=H){
+    if(H<INF && (ny<0 || ny>=H)){
       dy = -dy;
       ny = pcY + dy;
       if(ny<0) ny=0;
@@ -887,11 +929,13 @@ function resetExecutionState(){
 
 function prepareCodeToPlayfield(){
   const raw=document.getElementById('code').value;
-  playfield=new Array(W*H).fill(' ');
+  playfield=new Map();
   const lines=raw.split('\n');
-  for(let y=0;y<Math.min(H,lines.length);y++){
+  const rows=Math.min(lines.length, H);
+  for(let y=0;y<rows;y++){
     const line=lines[y];
-    for(let x=0;x<Math.min(W,line.length);x++){
+    const cols=Math.min(line.length, W);
+    for(let x=0;x<cols;x++){
       setCell(x,y,line[x]);
     }
   }
@@ -917,6 +961,39 @@ function updateDirectionMode(){
   const b=document.getElementById('dirBadge');
   b.textContent=directionMode==='wrap'?(currentLang==='ru'?'↻ Закольцованный':'↻ Wrap-Around'):(currentLang==='ru'?'⇄ Отражение':'⇄ Bounce');
   b.className='badge badge-std';
+}
+
+function updateFieldSize(){
+  let w = parseInt(document.getElementById('sizeW').value);
+  let h = parseInt(document.getElementById('sizeH').value);
+  if(isNaN(w) || w < 0) w = 0;
+  if(isNaN(h) || h < 0) h = 0;
+
+  // 0 = бесконечность (маркер INF)
+  W = (w === 0) ? INF : w;
+  H = (h === 0) ? INF : h;
+
+  // отражаем обратно в поля (0 для бесконечности)
+  document.getElementById('sizeW').value = (W === INF ? 0 : W);
+  document.getElementById('sizeH').value = (H === INF ? 0 : H);
+
+  // пересобрать и сбросить
+  stopCode();
+  resetExecutionState();
+  prepareCodeToPlayfield();
+  updateUI();
+  updatePlayfieldTitle();
+  try{localStorage.setItem('bf_sizeW', String(W));}catch(e){}
+  try{localStorage.setItem('bf_sizeH', String(H));}catch(e){}
+}
+
+function updatePlayfieldTitle(){
+  const wTxt = W === INF ? '∞' : W;
+  const hTxt = H === INF ? '∞' : H;
+  document.getElementById('pfTitle').textContent =
+    (currentLang === 'ru'
+      ? `Игровое поле (${wTxt}×${hTxt}) — клик по клетке = редактировать код`
+      : `Playfield (${wTxt}×${hTxt}) — click a cell to edit code`);
 }
 
 function updateDivZeroMode(){
@@ -1372,7 +1449,7 @@ function stepBackward(){
   isPaused=true;clearInterval(timer);if(instantChunkTimer){clearTimeout(instantChunkTimer);instantChunkTimer=null;}
   if(waitingForInput){cancelInput();}
   const s=history.pop();
-  playfield=s.playfield.slice();
+  playfield=s.playfield;            // уже Map — копия не нужна, храним как есть
   stack=s.stack.slice();
   pcX=s.pcX;pcY=s.pcY;dx=s.dx;dy=s.dy;stringMode=s.stringMode;
   totalSteps=s.totalSteps;
@@ -1385,7 +1462,7 @@ function stepBackward(){
 }
 function saveHistory(){
   history.push({
-    playfield:playfield.slice(), stack:stack.slice(),
+    playfield:new Map(playfield), stack:stack.slice(),
     pcX,pcY,dx,dy,stringMode,totalSteps,
     output:document.getElementById('output').value,
     outputHistory:outputHistory.slice(), outputHistoryCounter,
@@ -1407,9 +1484,22 @@ function clearAll(){
 function updateUI(){
   const pfEl=document.getElementById('playfield');
   if(pfEl){
+    // Для большого/бесконечного поля рендерим окно вокруг PC
+    const renderW = Math.min(W, MAX_RENDER_W);
+    const renderH = Math.min(H, MAX_RENDER_H);
+
+    let offX = 0, offY = 0;
+    if(W > renderW){
+      offX = Math.max(0, Math.min(W - renderW, pcX - Math.floor(renderW/2)));
+    }
+    if(H > renderH){
+      offY = Math.max(0, Math.min(H - renderH, pcY - Math.floor(renderH/2)));
+    }
+
+    pfEl.style.gridTemplateColumns = `repeat(${renderW},18px)`;
     let html='';
-    for(let y=0;y<H;y++){
-      for(let x=0;x<W;x++){
+    for(let y=offY;y<offY+renderH;y++){
+      for(let x=offX;x<offX+renderW;x++){
         let ch=getCell(x,y);
         let display=ch===' '?'·':ch;
         let cls='pf-cell';
@@ -1519,10 +1609,14 @@ function editCell(x,y){
   const ch=prompt(`Cell (${x},${y}) — enter character:`,cur===' '?'':cur);
   if(ch===null)return;
   setCell(x,y,ch.length>0?ch[0]:' ');
+
+  // Пересобрать код из playfield в пределах W×H (для больших полей — обрезаем до W/H)
+  const maxX = Math.min(W, 200);   // не даём раздувать textarea при бесконечности
+  const maxY = Math.min(H, 100);
   const lines=[];
-  for(let yy=0;yy<H;yy++){
+  for(let yy=0;yy<maxY;yy++){
     let line='';
-    for(let xx=0;xx<W;xx++)line+=getCell(xx,yy);
+    for(let xx=0;xx<maxX;xx++)line+=getCell(xx,yy);
     lines.push(line.replace(/ +$/,''));
   }
   document.getElementById('code').value=lines.join('\n');
@@ -1608,6 +1702,8 @@ function generateShareLink(){
     divZeroValue:String(divZeroValue),
     tildeMode:tildeMode,
     tildeValue:String(tildeValue),
+    sizeW: (W===INF?0:W),
+    sizeH: (H===INF?0:H),
   };
   try{
     const json=JSON.stringify(state);
@@ -1649,6 +1745,15 @@ function loadFromHash(){
     if(state.tildeValue!==undefined){
       try{tildeValue=BigInt(state.tildeValue);}catch(e){tildeValue=-1n;}
     }
+    // размер поля
+    if(state.sizeW !== undefined){
+      W = (state.sizeW === 0) ? INF : state.sizeW;
+      document.getElementById('sizeW').value = (W===INF?0:W);
+    }
+    if(state.sizeH !== undefined){
+      H = (state.sizeH === 0) ? INF : state.sizeH;
+      document.getElementById('sizeH').value = (H===INF?0:H);
+    }
     document.getElementById('directionModeSelect').value=directionMode;
     document.getElementById('code').value=state.code||'';
     document.getElementById('output').value='';
@@ -1657,6 +1762,7 @@ function loadFromHash(){
     resetExecutionState();
     prepareCodeToPlayfield();
     updateUI();updateCodeHighlight();updateDirectionMode();
+    updatePlayfieldTitle();
     updateAsciiTableDisplay();
     return true;
   }catch(e){console.error('Failed to load state:',e);return false;}
@@ -1670,17 +1776,36 @@ window.onload=function(){
   const loaded=loadFromHash();
   if(!loaded){
     document.getElementById('code').value=examples.hello2.code;
-    prepareCodeToPlayfield();
-    updateUI();
-    updateCodeHighlight();
   }
   loadDivZeroMode();
   loadTildeMode();
+
+  // размер поля из localStorage
+  try{
+    const sw = localStorage.getItem('bf_sizeW');
+    const sh = localStorage.getItem('bf_sizeH');
+    if(sw !== null) document.getElementById('sizeW').value = sw;
+    if(sh !== null) document.getElementById('sizeH').value = sh;
+  }catch(e){}
+
+  // применяем размер (из hash или localStorage), не сбрасывая код
+  let w = parseInt(document.getElementById('sizeW').value);
+  let h = parseInt(document.getElementById('sizeH').value);
+  if(isNaN(w) || w < 0) w = DEFAULT_W;
+  if(isNaN(h) || h < 0) h = DEFAULT_H;
+  W = (w === 0) ? INF : w;
+  H = (h === 0) ? INF : h;
+  document.getElementById('sizeW').value = (W===INF?0:W);
+  document.getElementById('sizeH').value = (H===INF?0:H);
+
+  prepareCodeToPlayfield();
   updateDirectionMode();
   updateStatsLabels();
   updateAsciiBadge();
   if(!loaded)updateAsciiTableDisplay();
   updateExamplesDropdown();
+  updatePlayfieldTitle();
+
   document.getElementById('code').addEventListener('input',()=>{
     updateCodeHighlight();
   });
